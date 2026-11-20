@@ -12,6 +12,19 @@ dist
 dist-ssr
 *.local
 
+# Secrets and wallets: never commit
+.env
+.env.*
+!.env.example
+*keypair*.json
+id.json
+*.pem
+*.key
+*.secret
+wallets/
+.anchor/
+test-ledger/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
