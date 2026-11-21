@@ -46,4 +46,6 @@ pub enum ShroudError {
     VrfWaitNotExpired,
     #[msg("secret account does not belong to this league")]
     WrongSecret,
+    #[msg("only the league winner can claim the trophy")]
+    NotWinner,
 }

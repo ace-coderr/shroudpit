@@ -3,6 +3,7 @@ use anchor_lang::prelude::*;
 pub const LEAGUE_SEED: &[u8] = b"league";
 pub const ENTRY_SEED: &[u8] = b"entry";
 pub const SECRET_SEED: &[u8] = b"secret";
+pub const TROPHY_SEED: &[u8] = b"trophy";
 
 pub const MAX_PLAYERS: u8 = 8;
 pub const MAX_ROUNDS: u8 = 8;

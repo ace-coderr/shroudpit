@@ -52,6 +52,188 @@
       ]
     },
     {
+      "name": "claim_trophy",
+      "docs": [
+        "The winner claims an owned devnet asset: a 0-decimal SPL token, supply 1, minted to their",
+        "wallet. The mint is a PDA of the league, so it can exist only once, and its mint authority",
+        "is removed straight after minting so the supply can never grow."
+      ],
+      "discriminator": [
+        88,
+        42,
+        164,
+        34,
+        43,
+        126,
+        16,
+        64
+      ],
+      "accounts": [
+        {
+          "name": "winner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "league",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  101,
+                  97,
+                  103,
+                  117,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league.creator",
+                "account": "League"
+              },
+              {
+                "kind": "account",
+                "path": "league.id",
+                "account": "League"
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint",
+          "docs": [
+            "One mint per league: a second claim fails because the PDA already exists."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  114,
+                  111,
+                  112,
+                  104,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league"
+              }
+            ]
+          }
+        },
+        {
+          "name": "winner_token",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "winner"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "commit_nonce",
       "docs": [
         "Commit a private nonce for this round. Nonces are immutable once committed and must be in",
@@ -1965,6 +2147,11 @@
       "code": 6021,
       "name": "WrongSecret",
       "msg": "secret account does not belong to this league"
+    },
+    {
+      "code": 6022,
+      "name": "NotWinner",
+      "msg": "only the league winner can claim the trophy"
     }
   ],
   "types": [

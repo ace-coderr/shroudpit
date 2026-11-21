@@ -301,7 +301,7 @@ export default function Desk() {
             <h3>Settlement</h3>
             <p className="muted small">
               Settlement is permissionless. It runs from any open desk using a throwaway key, so nobody has to
-              approve a wallet pop-up and nobody has to run a server.
+              approve a wallet pop-up and nobody has to run a server. It does need at least one open desk (any player's) within 60 seconds of the close: if no client is open in that window the round is voided and nobody is scored.
             </p>
             <label className="check">
               <input type="checkbox" checked={help} onChange={(ev) => setHelp(ev.target.checked)} />

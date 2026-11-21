@@ -282,6 +282,31 @@ export function programFor(connection: Connection, publicKey: PublicKey) {
 
 export type AnyTx = Transaction
 
+// ---------- trophies ----------
+
+const TOKEN_PROGRAM = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')
+export const trophyMint = (league: PublicKey) =>
+  PublicKey.findProgramAddressSync([new TextEncoder().encode('trophy'), league.toBytes()], PROGRAM_ID)[0]
+
+/** Has this league's trophy been minted yet? The mint is a PDA that can exist only once. */
+export async function trophyClaimed(league: PublicKey): Promise<boolean> {
+  return !!(await baseConnection.getAccountInfo(trophyMint(league)))
+}
+
+/** Trophies a wallet really holds: league trophy mints with a balance of 1 in the wallet. */
+export async function fetchTrophies(player: PublicKey, leagues: LeagueView[]) {
+  const byMint = new Map(leagues.filter((l) => l.status === 4).map((l) => [trophyMint(l.key).toBase58(), l]))
+  if (byMint.size === 0) return []
+  const accounts = await baseConnection.getParsedTokenAccountsByOwner(player, { programId: TOKEN_PROGRAM })
+  const held: { mint: PublicKey; league: LeagueView }[] = []
+  for (const a of accounts.value) {
+    const info = a.account.data.parsed.info
+    const league = byMint.get(info.mint)
+    if (league && Number(info.tokenAmount.amount) >= 1) held.push({ mint: new PublicKey(info.mint), league })
+  }
+  return held
+}
+
 /** Map a failed transaction's logs to the program error name. */
 export function errorFromLogs(logs: string[] | null | undefined): string | null {
   const m = (logs ?? []).join('\n').match(/Error Code: (\w+)/)

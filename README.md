@@ -95,7 +95,22 @@ Each open desk polls `lock_in`, `finalize_without_vrf` and `settle_and_reveal` e
 
 **Why there is no crank.** MagicBlock documents cranks (scheduled instructions that run inside the rollup). A `schedule_settle` instruction was built and tested on the Private ER: scheduling succeeded, but the scheduled call never executed. It was tried scheduled at the start of a round and scheduled after the close (when the call would have settled immediately), and nothing settled within 150 seconds either way. The failure is silent, so the cause is unknown. The instruction was removed rather than left as something that appears to work.
 
-Trade-off: a settler can pick the exact moment inside the 60-second window, so the settlement price can be nudged by at most that much price movement. In practice the first open desk settles within seconds and later calls are no-ops, so the bound is the polling interval as long as one honest desk is open. If nobody is online for the whole window the round is voided, which costs nobody anything but the round. The window is a constant in `state.rs`.
+Trade-off: a settler can pick the exact moment inside the 60-second window, so the settlement price can be nudged by at most that much price movement. In practice the first open desk settles within seconds and later calls are no-ops, so the bound is the polling interval as long as one honest desk is open. **Limit: settlement needs an open client within the window.** There is no server and the scheduled-task route did not work, so if no desk (any player's) is open during the 60 seconds after the hidden close, the round is voided and nobody is scored. It costs nobody anything but the round. The window is a constant in `state.rs`.
+## Trophy
+
+When a league has finished, the winner can claim an owned devnet asset with `claim_trophy`: a 0-decimal SPL token, supply 1, minted to the winner's wallet. The mint is a PDA of the league, so a second claim fails, and its mint authority is removed right after minting so the supply can never grow. Only the recorded winner can claim. Verified on devnet: supply 1, no mint or freeze authority, the winner holds it, and a second claim is rejected. The winner pays the rent for the mint and their token account, 0.00256 SOL on devnet (measured). There is no metadata account: the asset is the token itself, and the Skill Record page lists the trophies a wallet actually holds.
+
+## Reveal policy
+
+Today each settled round commits every entry, which reveals that round's closing positions (and nonces) once the round has closed. That makes audit simple, but a later round can copy a pattern from an earlier one.
+
+**Option: reveal positions only after the final round, scores stay public every round.** Estimated cost:
+
+- **Design.** Split `Entry` into a private `Entry` (position history for every round, nonce) that is committed only by the final `commit_and_undelegate`, and a public `Card` (rounds scored, sums, last return, rating) committed every round.
+- **On-chain cost.** One extra account per player (about 0.0013 SOL rent each, paid at join) plus about 0.0015 SOL more rent for the history inside `Entry`. One more delegation per player in the join transaction. A settlement commits `2N + 2` accounts instead of `N + 2` (18 for eight players), which fits in a transaction but adds compute.
+- **Work.** About 3 to 5 KB more program, one more upgrade cycle (a temporary 2.4 SOL buffer, refunded), and changes to join, settlement, `set_position`, the Audit page and the scripts. Moderate risk, mostly around transaction size and compute on the largest leagues.
+- **Side effects.** Nonces and per-round positions stay hidden until the league ends, so the close-time recomputation can only be done after the final round. A league that is abandoned never reveals.
+- **Recommendation.** Not too costly, and it closes the main copying leak, so it is worth building if multi-round leagues are part of the demo. If it is not built, run demo leagues as single-round: with one round the reveal happens only after the league is over and there is nothing left to copy.
 ## Prices
 
 Positions are marked to the MagicBlock real-time oracle (Pyth Lazer data, updated roughly every second inside the rollup). The program reads the feed account directly and checks that it is the pinned feed address, owned by the oracle program, has a positive price, and is fresh: at most 5 seconds old when a position is set, and published inside the settlement window when settling. The base-layer copy of the feed is not used; it is stale.
@@ -148,6 +163,6 @@ The site is a static build served from GitHub Pages. Every push to `main` runs `
 
 ## Status
 
-Front end: Lobby, Creator Console, Sealed Desk (with fuzzy Round Clock), Rank-only Standings, Reveal & Audit and Skill Record are implemented and read real devnet data. Trophies are not implemented yet.
+Front end: Lobby, Creator Console, Sealed Desk (with fuzzy Round Clock), Rank-only Standings, Reveal & Audit and Skill Record are implemented and read real devnet data. The winner claims a trophy token from the Skill Record page.
 
 On-chain flow verified on devnet: league creation, joining, delegation to the Private ER, private entry permissions, the privacy reads in the table above, the live price feed on the rollup and the base-layer VRF. See `docs/audit-checklist.md` for the open and verified checks.

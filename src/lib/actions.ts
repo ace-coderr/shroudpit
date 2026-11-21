@@ -134,6 +134,15 @@ export async function setPosition(signer: Signer, league: PublicKey, feed: Publi
   return sendTee(connection, signer, tx)
 }
 
+/** The winner of a finished league claims the trophy token (about 0.0026 SOL of rent). */
+export async function claimTrophy(signer: Signer, league: PublicKey) {
+  const tx = await programFor(baseConnection, signer.publicKey)
+    .methods.claimTrophy()
+    .accountsPartial({ winner: signer.publicKey, league })
+    .transaction()
+  return sendBase(baseConnection, signer, tx)
+}
+
 /** Permissionless: anyone can settle once the hidden close has passed. */
 export async function settle(signer: Signer | Keypair, connection: Connection, league: PublicKey, feed: PublicKey) {
   const tx = await programFor(connection, signer.publicKey)

@@ -6,6 +6,10 @@ pub mod state;
 use anchor_lang::prelude::*;
 use solana_sha256_hasher::hashv;
 use anchor_lang::system_program::{transfer, Transfer};
+use anchor_spl::{
+    associated_token::AssociatedToken,
+    token::{self, spl_token::instruction::AuthorityType, Mint, MintTo, SetAuthority, Token, TokenAccount},
+};
 use ephemeral_rollups_sdk::{
     access_control::{
         instructions::CreateEphemeralPermissionCpi,
@@ -393,6 +397,48 @@ pub mod shroudpit {
         entry.side = side;
         entry.leverage = leverage;
         entry.entry_price = if side == 0 { 0 } else { q.price };
+        Ok(())
+    }
+
+    // ------------------------------------------------------------------
+    // Trophy (base layer, after the league has finished)
+    // ------------------------------------------------------------------
+
+    /// The winner claims an owned devnet asset: a 0-decimal SPL token, supply 1, minted to their
+    /// wallet. The mint is a PDA of the league, so it can exist only once, and its mint authority
+    /// is removed straight after minting so the supply can never grow.
+    pub fn claim_trophy(ctx: Context<ClaimTrophy>) -> Result<()> {
+        let l = &ctx.accounts.league;
+        require!(l.status == Status::Finished as u8, ShroudError::WrongStatus);
+        require_keys_eq!(l.winner, ctx.accounts.winner.key(), ShroudError::NotWinner);
+        let id = l.id.to_le_bytes();
+        let bump = [l.bump];
+        let seeds: &[&[u8]] = &[LEAGUE_SEED, l.creator.as_ref(), &id, &bump];
+        let token_program = ctx.accounts.token_program.key();
+        token::mint_to(
+            CpiContext::new_with_signer(
+                token_program,
+                MintTo {
+                    mint: ctx.accounts.mint.to_account_info(),
+                    to: ctx.accounts.winner_token.to_account_info(),
+                    authority: ctx.accounts.league.to_account_info(),
+                },
+                &[seeds],
+            ),
+            1,
+        )?;
+        token::set_authority(
+            CpiContext::new_with_signer(
+                token_program,
+                SetAuthority {
+                    current_authority: ctx.accounts.league.to_account_info(),
+                    account_or_mint: ctx.accounts.mint.to_account_info(),
+                },
+                &[seeds],
+            ),
+            AuthorityType::MintTokens,
+            None,
+        )?;
         Ok(())
     }
 
@@ -868,4 +914,35 @@ pub struct Settle<'info> {
     /// CHECK: the magic fee vault PDA for the TEE validator
     #[account(mut, address = MAGIC_FEE_VAULT)]
     pub magic_fee_vault: UncheckedAccount<'info>,
+}
+
+#[derive(Accounts)]
+pub struct ClaimTrophy<'info> {
+    #[account(mut)]
+    pub winner: Signer<'info>,
+    #[account(
+        seeds = [LEAGUE_SEED, league.creator.as_ref(), &league.id.to_le_bytes()],
+        bump = league.bump
+    )]
+    pub league: Account<'info, League>,
+    /// One mint per league: a second claim fails because the PDA already exists.
+    #[account(
+        init,
+        payer = winner,
+        seeds = [TROPHY_SEED, league.key().as_ref()],
+        bump,
+        mint::decimals = 0,
+        mint::authority = league
+    )]
+    pub mint: Account<'info, Mint>,
+    #[account(
+        init_if_needed,
+        payer = winner,
+        associated_token::mint = mint,
+        associated_token::authority = winner
+    )]
+    pub winner_token: Account<'info, TokenAccount>,
+    pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub system_program: Program<'info, System>,
 }

@@ -1,6 +1,9 @@
+import type { PublicKey } from '@solana/web3.js'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { fetchEntriesForPlayer, fetchLeagues } from '../lib/chain'
-import { STATUS_LABEL } from '../lib/config'
+import { claimTrophy } from '../lib/actions'
+import { fetchEntriesForPlayer, fetchLeagues, fetchTrophies, trophyClaimed } from '../lib/chain'
+import { STATUS_LABEL, explorerAddress } from '../lib/config'
 import { short, usePoll } from '../lib/hooks'
 import { useSigner } from '../lib/wallet'
 
@@ -21,6 +24,38 @@ export default function Record() {
     20_000,
     [pk?.toBase58()],
   )
+
+  const [claimMsg, setClaimMsg] = useState<string | null>(null)
+  const [claiming, setClaiming] = useState<string | null>(null)
+
+  // trophies the wallet really holds, and finished leagues it won but has not claimed yet
+  const trophies = usePoll(
+    async () => {
+      if (!pk) return { held: [], claimable: [] }
+      const leagues = await fetchLeagues()
+      const held = await fetchTrophies(pk, leagues)
+      const won = leagues.filter((l) => l.status === 4 && l.winner.equals(pk))
+      const claimed = await Promise.all(won.map((l) => trophyClaimed(l.key)))
+      return { held, claimable: won.filter((_, i) => !claimed[i]) }
+    },
+    20_000,
+    [pk?.toBase58()],
+  )
+
+  async function claim(league: PublicKey) {
+    if (!signer) return
+    setClaiming(league.toBase58())
+    setClaimMsg(null)
+    try {
+      await claimTrophy(signer, league)
+      setClaimMsg('Trophy claimed. It is now in your wallet.')
+      await trophies.refresh()
+    } catch (e) {
+      setClaimMsg(e instanceof Error ? e.message : String(e))
+    } finally {
+      setClaiming(null)
+    }
+  }
 
   const rows = rec.data ?? []
   const scored = rows.filter((r) => r.entry.roundsScored > 0)
@@ -46,7 +81,32 @@ export default function Record() {
           <div><dt>Leagues won</dt><dd className="mono">{wins}</dd></div>
         </dl>
       )}
-      {rec.error && <p className="notice notice--bad">{rec.error}</p>}
+      {pk && (
+        <div className="panel">
+          <h3>Trophies</h3>
+          {(trophies.data?.held.length ?? 0) === 0 && (trophies.data?.claimable.length ?? 0) === 0 && (
+            <p className="empty">No trophies yet. The winner of a finished league can claim one.</p>
+          )}
+          <ul className="siglist">
+            {trophies.data?.held.map((h) => (
+              <li key={h.mint.toBase58()}>
+                <span className="badge badge--4">Trophy</span>{' '}
+                <Link className="mono small" to={`/audit/${h.league.key.toBase58()}`}>league {short(h.league.key.toBase58(), 5, 5)}</Link>{' '}
+                <a className="mono small" href={explorerAddress(h.mint.toBase58())} target="_blank" rel="noreferrer">token {short(h.mint.toBase58(), 5, 5)}</a>
+              </li>
+            ))}
+            {trophies.data?.claimable.map((l) => (
+              <li key={l.key.toBase58()}>
+                <span className="mono small">League {short(l.key.toBase58(), 5, 5)} is won and unclaimed</span>{' '}
+                <button className="btn btn--ink" disabled={claiming === l.key.toBase58()} onClick={() => void claim(l.key)}>
+                  {claiming === l.key.toBase58() ? 'Claiming…' : 'Claim trophy (about 0.0026 SOL)'}
+                </button>
+              </li>
+            ))}
+          </ul>
+          {claimMsg && <p className="notice">{claimMsg}</p>}
+        </div>
+      )}      {rec.error && <p className="notice notice--bad">{rec.error}</p>}
       {pk && rows.length === 0 && !rec.loading && <p className="empty">No leagues yet. Join one from the <Link to="/lobby">lobby</Link>.</p>}
 
       <ol className="table">
