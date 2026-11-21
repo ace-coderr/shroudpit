@@ -121,16 +121,6 @@ export async function finalizeWithoutVrf(signer: Signer | Keypair, connection: C
   return sendTee(connection, signer, tx)
 }
 
-export async function scheduleSettle(signer: Signer, league: PublicKey, feed: PublicKey) {
-  const { connection } = await teeSession(signer)
-  const tx = await programFor(connection, signer.publicKey)
-    .methods.scheduleSettle()
-    .accountsPartial({ payer: signer.publicKey, league, secret: secretPda(league), priceFeed: feed })
-    .remainingAccounts(await remainingEntries(league, true))
-    .transaction()
-  return sendTee(connection, signer, tx)
-}
-
 export async function setPosition(signer: Signer, league: PublicKey, feed: PublicKey, side: number, leverage: number) {
   const { connection } = await teeSession(signer)
   const entry = entryPda(league, signer.publicKey)

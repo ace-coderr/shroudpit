@@ -1490,95 +1490,6 @@
       ]
     },
     {
-      "name": "schedule_settle",
-      "docs": [
-        "Creator schedules a polling crank that calls `settle_and_reveal` every 2 seconds, so",
-        "settlement needs no off-chain bot. The scheduled call is a no-op until the hidden close."
-      ],
-      "discriminator": [
-        122,
-        157,
-        112,
-        214,
-        90,
-        36,
-        240,
-        148
-      ],
-      "accounts": [
-        {
-          "name": "payer",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "league",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  108,
-                  101,
-                  97,
-                  103,
-                  117,
-                  101
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "league.creator",
-                "account": "League"
-              },
-              {
-                "kind": "account",
-                "path": "league.id",
-                "account": "League"
-              }
-            ]
-          }
-        },
-        {
-          "name": "secret",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  115,
-                  101,
-                  99,
-                  114,
-                  101,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "league"
-              }
-            ]
-          }
-        },
-        {
-          "name": "price_feed"
-        },
-        {
-          "name": "magic_program",
-          "address": "Magic11111111111111111111111111111111111111"
-        },
-        {
-          "name": "magic_context",
-          "writable": true,
-          "address": "MagicContext1111111111111111111111111111111"
-        }
-      ],
-      "args": []
-    },
-    {
       "name": "set_position",
       "docs": [
         "Set or adjust the caller's paper position. Marks the previous position to the current",
@@ -1757,7 +1668,7 @@
     {
       "name": "settle_and_reveal",
       "docs": [
-        "Permissionless and idempotent: callable by anyone, by a crank, or by a player's browser.",
+        "Permissionless and idempotent: callable by anyone, for example from any player's open desk.",
         "",
         "* before the hidden close, or once the round is no longer live: does nothing (Ok);",
         "* inside the settlement window: marks every entry to the settlement price, updates",
@@ -1831,6 +1742,11 @@
         },
         {
           "name": "price_feed"
+        },
+        {
+          "name": "magic_fee_vault",
+          "writable": true,
+          "address": "EUJssY6kG5fb35s9Lc6jyh6joRPo2e2MhJqoKCqcTt5b"
         },
         {
           "name": "magic_program",

@@ -16,7 +16,6 @@ Devnet only. No real funds are involved.
 | Private Ephemeral Rollup (TEE) | Entries are readable only by their owner; the close time is readable by nobody until settlement |
 | VRF | Optionally mixed into the close-time derivation when its output arrives in time |
 | Real-time price oracle | Positions are marked to live oracle prices, read inside the rollup |
-| Cranks | A scheduled instruction can trigger settlement with no off-chain bot |
 
 ## Accounts
 
@@ -37,7 +36,7 @@ The split between `League` and `Secret` exists so clients can follow the phase (
 3. **Nonce phase.** The creator opens a round. Every player commits a random 32-byte nonce, privately. A nonce is immutable once committed.
 4. **Lock-in.** Once everyone committed (or the deadline passed with at least two nonces), anyone locks the round in and the close time is derived.
 5. **Live.** Players set and adjust positions at live oracle prices. `set_position` is refused once the hidden close has passed.
-6. **Settle and reveal.** Anyone can call `settle_and_reveal` (a crank can too). Positions are marked to the settlement price, ratings update, and the rollup commits. The last round also undelegates everything.
+6. **Settle and reveal.** Anyone can call `settle_and_reveal`, from any open desk. Positions are marked to the settlement price, ratings update, and the rollup commits. The last round also undelegates everything.
 
 ## How the close time is derived
 
@@ -67,7 +66,7 @@ Nonces must be committed **before** lock-in: `commit_nonce` is refused once the 
 | RPC read of the `Secret` | Refused for everyone, including the creator (verified on devnet) |
 | RPC read of the `League` | Allowed, by design: phase, round, deadlines, player count. It holds nothing that reveals the close time |
 | Base-layer copy of a delegated account | Stale zeroed state from before delegation, never a live position |
-| Transaction logs for position and nonce transactions | Visible only to the entry's owner (permission flags restrict logs, messages and balances to the member) |
+| A position transaction fetched by a non-member | Returns an empty shell: zero account keys, no instruction data (so no side or leverage), zero log lines, no balances. Verified on devnet with a brand-new key. The owner's own fetch of that transaction was redacted the same way, so the owner reads their position from their `Entry`, not from history |
 | Join and delegate transactions | **Public on devnet**: who joined which league is visible. Positions are not |
 | Settlement commit | Reveals each player's closing position and nonce **for that round**, after it closed. This enables audit but also lets later rounds copy an earlier pattern. Keeping positions sealed until the final round is a possible future option |
 
@@ -87,13 +86,16 @@ Not verified: whether the *timing* and *count* of a player's transactions inside
 `settle_and_reveal` is permissionless and safe to call at any time:
 
 - before the hidden close, or when the round is not live: it does nothing;
-- inside the **30-second settlement window** after the close: it settles at a price published inside that window;
+- inside the **60-second settlement window** after the close: it settles at a price published inside that window;
 - after the window: the round is **voided** (nobody is scored) and the league moves on. This path never reads the price feed, so a late trigger, a missing trigger or a broken feed can never strand a league.
 
-The league account pays for the commit and signs for itself, so there is no keeper key. The front end polls settlement from any open desk with a throwaway key, and the creator can schedule a crank (`schedule_settle`) that calls the same instruction every two seconds inside the rollup.
+The league account pays for the commit and signs for itself, so there is no keeper key and no funds are needed to trigger it. Verified on devnet: lock-in (including the VRF request) and settlement were sent by a brand-new key that holds no SOL anywhere, and a league that sat live far past its close was voided by such a key.
 
-Trade-off: a settler can choose the exact moment inside the 30-second window, so the settlement price can be nudged by at most 30 seconds of price movement. The window is a constant in `state.rs`.
+Each open desk polls `lock_in`, `finalize_without_vrf` and `settle_and_reveal` every few seconds with a throwaway key, so the first open desk to notice settles the round within about three seconds, and there is also an "Advance the round now" button. A later caller finds the round already settled and does nothing.
 
+**Why there is no crank.** MagicBlock documents cranks (scheduled instructions that run inside the rollup). A `schedule_settle` instruction was built and tested on the Private ER: scheduling succeeded, but the scheduled call never executed. It was tried scheduled at the start of a round and scheduled after the close (when the call would have settled immediately), and nothing settled within 150 seconds either way. The failure is silent, so the cause is unknown. The instruction was removed rather than left as something that appears to work.
+
+Trade-off: a settler can pick the exact moment inside the 60-second window, so the settlement price can be nudged by at most that much price movement. In practice the first open desk settles within seconds and later calls are no-ops, so the bound is the polling interval as long as one honest desk is open. If nobody is online for the whole window the round is voided, which costs nobody anything but the round. The window is a constant in `state.rs`.
 ## Prices
 
 Positions are marked to the MagicBlock real-time oracle (Pyth Lazer data, updated roughly every second inside the rollup). The program reads the feed account directly and checks that it is the pinned feed address, owned by the oracle program, has a positive price, and is fresh: at most 5 seconds old when a position is set, and published inside the settlement window when settling. The base-layer copy of the feed is not used; it is stale.

@@ -1,9 +1,8 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { PublicKey } from '@solana/web3.js'
 import {
-  createLeague, joinLeague, openRound, scheduleSettle, sealSecret, startLeague,
+  createLeague, joinLeague, openRound, sealSecret, startLeague,
 } from '../lib/actions'
 import { permissionPda, secretPda } from '../lib/chain'
 import type { LeagueView } from '../lib/chain'
@@ -133,7 +132,6 @@ function ConsoleCard({ league }: { league: LeagueView }) {
     }
   }
   if (!signer) return null
-  const feed = new PublicKey(league.feed)
   return (
     <li className="card">
       <div className="card__top">
@@ -155,11 +153,6 @@ function ConsoleCard({ league }: { league: LeagueView }) {
         {league.delegated && sealed.data === true && (league.status === 0 || league.status === 3) && (
           <button className="btn btn--ink" disabled={!!busy} onClick={() => void run('Open round', () => openRound(signer, key))}>
             Open round {league.round + 1}
-          </button>
-        )}
-        {league.delegated && (league.status === 5 || league.status === 1 || league.status === 2) && (
-          <button className="btn btn--line" disabled={!!busy} onClick={() => void run('Schedule auto-settlement', () => scheduleSettle(signer, key, feed))}>
-            Schedule auto-settlement (crank)
           </button>
         )}
         <Link className="btn btn--text" to={`/desk/${key.toBase58()}`}>Open the desk</Link>

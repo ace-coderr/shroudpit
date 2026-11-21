@@ -21,12 +21,16 @@ pub const VRF_WAIT_SECS: i64 = 20;
 /// Price must be at most this old (seconds) when a position is set.
 pub const MAX_PRICE_AGE_SECS: i64 = 5;
 /// The settlement price must be published within this many seconds after the close.
-/// Bounds how far a cranker can slide the settlement moment.
-pub const SETTLE_WINDOW_SECS: i64 = 30;
+/// Bounds how far a settler can slide the settlement moment.
+pub const SETTLE_WINDOW_SECS: i64 = 60;
 
 /// The TEE validator of the Private Ephemeral Rollup (devnet). Entries must only ever be
 /// delegated here so positions stay inside the enclave.
 pub const TEE_VALIDATOR: Pubkey = pubkey!("MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo");
+
+/// PDA ["magic-fee-vault", TEE_VALIDATOR] under the delegation program. The commit intent needs it
+/// when the payer is a delegated account, which the league PDA is.
+pub const MAGIC_FEE_VAULT: Pubkey = pubkey!("EUJssY6kG5fb35s9Lc6jyh6joRPo2e2MhJqoKCqcTt5b");
 
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq)]

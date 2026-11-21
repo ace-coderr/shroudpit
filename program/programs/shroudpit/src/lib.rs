@@ -4,10 +4,6 @@ pub mod rating;
 pub mod state;
 
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::{
-    instruction::{AccountMeta, Instruction},
-    program::invoke_signed,
-};
 use solana_sha256_hasher::hashv;
 use anchor_lang::system_program::{transfer, Transfer};
 use ephemeral_rollups_sdk::{
@@ -28,7 +24,6 @@ use ephemeral_rollups_sdk::{
         types::SerializableAccountMeta,
     },
 };
-use magicblock_magic_program_api::{args::ScheduleTaskArgs, instruction::MagicBlockInstruction};
 
 use error::ShroudError;
 use state::*;
@@ -401,7 +396,7 @@ pub mod shroudpit {
         Ok(())
     }
 
-    /// Permissionless and idempotent: callable by anyone, by a crank, or by a player's browser.
+    /// Permissionless and idempotent: callable by anyone, for example from any player's open desk.
     ///
     /// * before the hidden close, or once the round is no longer live: does nothing (Ok);
     /// * inside the settlement window: marks every entry to the settlement price, updates
@@ -431,81 +426,6 @@ pub mod shroudpit {
             ShroudError::OutsideSettleWindow
         );
         close_out(&mut ctx.accounts, remaining, Some((q.price, q.publish_time)))
-    }
-
-    /// Creator schedules a polling crank that calls `settle_and_reveal` every 2 seconds, so
-    /// settlement needs no off-chain bot. The scheduled call is a no-op until the hidden close.
-    pub fn schedule_settle<'info>(ctx: Context<'info, ScheduleSettle<'info>>) -> Result<()> {
-        let league = &ctx.accounts.league;
-        require!(
-            league.status == Status::Nonces as u8
-                || league.status == Status::AwaitingVrf as u8
-                || league.status == Status::Live as u8,
-            ShroudError::WrongStatus
-        );
-        require!(
-            ctx.remaining_accounts.len() == league.player_count as usize,
-            ShroudError::BadEntries
-        );
-        let league_key = league.key();
-
-        let mut metas = vec![
-            AccountMeta::new(league_key, false),
-            AccountMeta::new(ctx.accounts.secret.key(), false),
-            AccountMeta::new_readonly(ctx.accounts.price_feed.key(), false),
-            AccountMeta::new(ctx.accounts.magic_context.key(), false),
-            AccountMeta::new_readonly(ctx.accounts.magic_program.key(), false),
-        ];
-        for e in ctx.remaining_accounts {
-            metas.push(AccountMeta::new(*e.key, false));
-        }
-        let settle_ix = Instruction {
-            program_id: crate::ID,
-            accounts: metas.clone(),
-            data: anchor_lang::InstructionData::data(&crate::instruction::SettleAndReveal {}),
-        };
-
-        // Task ids are shared by every program on the validator: derive one from the league
-        // key, round and epoch so it is unique to this league and round.
-        let kb = league_key.to_bytes();
-        let mut b = [0u8; 8];
-        for (i, v) in kb.iter().enumerate() {
-            b[i % 8] ^= *v;
-        }
-        b[7] &= 0x7f;
-        let task_id = i64::from_le_bytes(b) ^ league.round as i64 ^ ((league.epoch as i64) << 8);
-
-        const INTERVAL_MS: i64 = 2_000;
-        let covered_secs = league.max_secs as i64
-            + NONCE_WINDOW_SECS
-            + VRF_WAIT_SECS
-            + SETTLE_WINDOW_SECS
-            + 30;
-        let iterations = covered_secs * 1000 / INTERVAL_MS;
-
-        let ix_data = bincode::serialize(&MagicBlockInstruction::ScheduleTask(ScheduleTaskArgs {
-            task_id,
-            execution_interval_millis: INTERVAL_MS,
-            iterations,
-            instructions: vec![settle_ix],
-        }))
-        .map_err(|_| error!(ShroudError::Overflow))?;
-
-        let mut cpi_metas = vec![AccountMeta::new(ctx.accounts.payer.key(), true)];
-        cpi_metas.extend(metas);
-        let schedule_ix = Instruction::new_with_bytes(MAGIC_PROGRAM_ID, &ix_data, cpi_metas);
-
-        let mut infos = vec![
-            ctx.accounts.payer.to_account_info(),
-            ctx.accounts.league.to_account_info(),
-            ctx.accounts.secret.to_account_info(),
-            ctx.accounts.price_feed.to_account_info(),
-            ctx.accounts.magic_context.to_account_info(),
-            ctx.accounts.magic_program.to_account_info(),
-        ];
-        infos.extend(ctx.remaining_accounts.iter().cloned());
-        invoke_signed(&schedule_ix, &infos, &[])?;
-        Ok(())
     }
 }
 
@@ -643,7 +563,7 @@ fn close_out<'info>(
     a.secret.exit(&crate::ID)?;
 
     // The league PDA pays for the commit and signs for itself, so no external signer (and no
-    // keeper) is needed: any caller or crank can trigger settlement.
+    // keeper) is needed: any caller can trigger settlement.
     let creator = a.league.creator;
     let id = a.league.id.to_le_bytes();
     let bump = [a.league.bump];
@@ -652,7 +572,8 @@ fn close_out<'info>(
         a.league.to_account_info(),
         a.magic_context.to_account_info(),
         a.magic_program.to_account_info(),
-    );
+    )
+    .magic_fee_vault(a.magic_fee_vault.to_account_info());
     if finishing {
         builder.commit_and_undelegate(&infos).build_and_invoke_signed(&[seeds])?;
     } else {
@@ -944,27 +865,7 @@ pub struct Settle<'info> {
     pub secret: Account<'info, Secret>,
     /// CHECK: pinned to league.feed and owner-checked in the handler
     pub price_feed: UncheckedAccount<'info>,
-}
-
-#[commit]
-#[derive(Accounts)]
-pub struct ScheduleSettle<'info> {
-    #[account(mut, constraint = payer.key() == league.creator @ ShroudError::NotCreator)]
-    pub payer: Signer<'info>,
-    #[account(
-        mut,
-        seeds = [LEAGUE_SEED, league.creator.as_ref(), &league.id.to_le_bytes()],
-        bump = league.bump
-    )]
-    pub league: Account<'info, League>,
-    #[account(
-        mut,
-        seeds = [SECRET_SEED, league.key().as_ref()],
-        bump = secret.bump,
-        constraint = secret.league == league.key() @ ShroudError::WrongSecret
-    )]
-    pub secret: Account<'info, Secret>,
-    /// CHECK: pinned to league.feed
-    #[account(address = league.feed @ ShroudError::WrongFeed)]
-    pub price_feed: UncheckedAccount<'info>,
+    /// CHECK: the magic fee vault PDA for the TEE validator
+    #[account(mut, address = MAGIC_FEE_VAULT)]
+    pub magic_fee_vault: UncheckedAccount<'info>,
 }

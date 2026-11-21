@@ -23,8 +23,6 @@ custom-panic = []
 [dependencies]
 anchor-lang = { version = "1.0.2", features = ["init-if-needed"] }
 ephemeral-rollups-sdk = { version = "0.18", features = ["anchor", "access-control", "vrf"] }
-magicblock-magic-program-api = "0.10.1"
-bincode = "1.3.3"
 solana-sha256-hasher = "3.1.0"
 
 

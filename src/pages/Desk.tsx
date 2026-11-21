@@ -308,6 +308,23 @@ export default function Desk() {
               Help lock in and settle from this tab
             </label>
             {helpNote && <p className="warn small">{helpNote}</p>}
+            {(league.status === 5 || league.status === 1 || league.status === 2) && (
+              <button
+                className="btn btn--line"
+                disabled={!!busy}
+                onClick={() =>
+                  void act('Advance the round', async () => {
+                    const conn = await helperConnection()
+                    const kp = helperKeypair()
+                    if (league.status === 5) return lockIn(kp, conn, key)
+                    if (league.status === 1) return finalizeWithoutVrf(kp, conn, key)
+                    return settle(kp, conn, key, league.feed)
+                  })
+                }
+              >
+                Advance the round now
+              </button>
+            )}
             {league.status === 3 || league.status === 4 ? (
               <p className="ok">
                 {league.status === 4 ? 'The league has finished.' : 'The round settled.'}{' '}

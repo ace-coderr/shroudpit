@@ -2,7 +2,7 @@
 // nonce commits, lock-in (optionally with VRF), positions, the "rejected after close" check,
 // settlement, and an independent recomputation of the close-time derivation.
 //
-//   WALLETS=3 CLOSE_MODE=0|1 ROUNDS=1 CRANK=0|1 KEYPAIR_DIR=/dir node scripts/e2e/10-round.mjs
+//   WALLETS=3 CLOSE_MODE=0|1 ROUNDS=1 KEYPAIR_DIR=/dir node scripts/e2e/10-round.mjs
 import { createHash, randomBytes } from 'node:crypto'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -17,7 +17,6 @@ import {
 const N = Number(process.env.WALLETS ?? 3)
 const CLOSE_MODE = Number(process.env.CLOSE_MODE ?? 0)
 const ROUNDS = Number(process.env.ROUNDS ?? 1)
-const CRANK = process.env.CRANK === '1'
 const DIR = process.env.KEYPAIR_DIR
 const idl = JSON.parse(readFileSync('program/target/idl/shroudpit.json', 'utf8'))
 
@@ -29,6 +28,10 @@ for (const f of files.slice(0, N)) {
 }
 const wallets = files.slice(0, N).map((f) => loadKeypair(join(DIR, f)))
 const creator = wallets[0]
+// HELPER=1: lock-in, finalisation and settlement are sent by a brand-new key that holds no SOL
+// anywhere, to prove that triggering them needs no funds and no privileges.
+const HELPER = process.env.HELPER === '1'
+const helper = Keypair.generate()
 const base = new Connection(BASE_RPC, 'confirmed')
 const baseProg = programFor(idl, base, creator)
 
@@ -74,6 +77,12 @@ link('delegate_league (+secret)', await send(base, await baseProg.methods
 // ---- Private ER ----
 const tee = {}
 for (const w of wallets) tee[w.publicKey.toBase58()] = await teeConnection(w)
+if (HELPER) {
+  tee[helper.publicKey.toBase58()] = await teeConnection(helper)
+  out.helper = { key: helper.publicKey.toBase58(), baseBalanceLamports: await base.getBalance(helper.publicKey) }
+  console.log(`helper ${helper.publicKey.toBase58()} base balance ${out.helper.baseBalanceLamports} lamports (never funded)`)
+}
+const actor = HELPER ? helper : creator
 const teeOf = (w) => tee[w.publicKey.toBase58()]
 const progOf = (w) => programFor(idl, teeOf(w), w)
 const teeC = teeOf(creator)
@@ -125,18 +134,6 @@ for (let round = 0; round < ROUNDS; round++) {
   let l = await readLeague()
   console.log(`  status=${l.status} (5 = Nonces) epoch=${l.epoch} nonce_deadline in ${l.nonceDeadline.toNumber() - Math.floor(Date.now() / 1000)}s`)
 
-  // schedule the settlement crank for this round
-  if (CRANK) {
-    try {
-      link(`schedule_settle (r${round})`, await sendTee(creator, await progOf(creator).methods
-        .scheduleSettle().accountsPartial({ payer: creator.publicKey, league, secret, priceFeed: SOL_USD_FEED })
-        .remainingAccounts(remaining).transaction()), true)
-    } catch (e) {
-      console.log('  schedule_settle FAILED:', e.message)
-      out.crank = { ok: false, error: e.message }
-    }
-  }
-
   // every player commits a private nonce
   const nonces = {}
   for (const w of wallets) {
@@ -149,10 +146,20 @@ for (let round = 0; round < ROUNDS; round++) {
   console.log(`  nonce_count=${l.nonceCount}/${l.playerCount}`)
 
   // lock in (anyone may; the creator pays here)
-  const lockSig = await sendTee(creator, await progOf(creator).methods
-    .lockIn().accountsPartial({ payer: creator.publicKey, league, secret })
-    .remainingAccounts(remaining.map((r) => ({ ...r, isWritable: false }))).transaction())
-  link(`lock_in (r${round})`, lockSig, true)
+  const lockIx = (who) => progOf(who).methods
+    .lockIn().accountsPartial({ payer: who.publicKey, league, secret })
+    .remainingAccounts(remaining.map((r) => ({ ...r, isWritable: false }))).transaction()
+  let lockSig
+  try {
+    lockSig = await sendTee(actor, await lockIx(actor))
+    if (HELPER) out.helper.lockIn = 'ok'
+  } catch (e) {
+    if (!HELPER) throw e
+    out.helper.lockIn = `FAILED: ${e.message}`
+    console.log('  lock_in by the unfunded key FAILED:', e.message, '-> retrying with the creator')
+    lockSig = await sendTee(creator, await lockIx(creator))
+  }
+  link(`lock_in (r${round}) by ${actor === helper && out.helper?.lockIn === 'ok' ? 'unfunded key' : 'creator'}`, lockSig, true)
   l = await readLeague()
   console.log(`  after lock_in: status=${l.status} (2 = Live, 1 = AwaitingVrf)`)
 
@@ -167,8 +174,8 @@ for (let round = 0; round < ROUNDS; round++) {
     if (l.status === 1) {
       const waitMs = l.vrfDeadline.toNumber() * 1000 - Date.now()
       if (waitMs > 0) await sleep(waitMs + 1500)
-      link('finalize_without_vrf', await sendTee(creator, await progOf(creator).methods
-        .finalizeWithoutVrf().accountsPartial({ payer: creator.publicKey, league, secret }).transaction()), true)
+      link('finalize_without_vrf', await sendTee(actor, await progOf(actor).methods
+        .finalizeWithoutVrf().accountsPartial({ payer: actor.publicKey, league, secret }).transaction()), true)
       out.vrf = 'did not arrive in time; derived from nonces and slot only'
     } else {
       out.vrf = `arrived after ~${Math.round((Date.now() - t0) / 1000)}s and was mixed in`
@@ -186,6 +193,33 @@ for (let round = 0; round < ROUNDS; round++) {
         player: w.publicKey, league, secret, entry: entries[w.publicKey.toBase58()],
         permission: permissionPda(entries[w.publicKey.toBase58()]), priceFeed: SOL_USD_FEED,
       }).transaction()), true)
+  }
+
+  // privacy with real positions in place: what can a non-member see now?
+  {
+    const posSig = out.links.filter((x) => x.label.startsWith(`set_position ${short(wallets[0].publicKey)}`)).at(-1)?.sig
+    const ownerEntry = entries[wallets[0].publicKey.toBase58()]
+    const outsiders = [['another player', teeOf(wallets[1])]]
+    if (HELPER) outsiders.push(['unfunded outsider', teeOf(helper)])
+    const res = {}
+    for (const [who, conn] of outsiders) {
+      res[`entryReadBy_${who}`] = await canRead(conn, ownerEntry)
+      let logs = 'denied/none'
+      try {
+        const t = await conn.getTransaction(posSig, { maxSupportedTransactionVersion: 0, commitment: 'confirmed' })
+        logs = t ? `VISIBLE (${t.meta?.logMessages?.length ?? 0} log lines)` : 'denied/none'
+      } catch (e) { logs = `denied (${String(e.message).slice(0, 40)})` }
+      res[`positionTxBy_${who}`] = logs
+    }
+    const baseEntry = await base.getAccountInfo(ownerEntry)
+    const be = decode(baseProg, 'entry', baseEntry.data)
+    res.secretReadByCreatorWhileLive = await canRead(teeC, secret)
+    res.secretReadByPlayerWhileLive = await canRead(teeOf(wallets[1]), secret)
+    res.secretReadByOutsiderWhileLive = HELPER ? await canRead(teeOf(helper), secret) : 'n/a'
+    res.baseLayerCopyShowsPosition = be.side !== 0
+    res.ownerSeesOwnPosition = !!(await teeC.getAccountInfo(ownerEntry))
+    console.log('privacy with positions in place:', JSON.stringify(res, null, 2))
+    out.privacyLive = res
   }
 
   // keep adjusting until the (hidden) close passes: the first RoundClosed rejection proves
@@ -212,22 +246,28 @@ for (let round = 0; round < ROUNDS; round++) {
   if (rejectedAfterClose?.sig) link('set_position REJECTED (after close)', rejectedAfterClose.sig, true)
   out.rejectedAfterClose = rejectedAfterClose
 
-  // settlement: by the crank if scheduled, else by anyone calling settle_and_reveal
-  let settledBy = 'crank'
+  // settlement: anyone can call settle_and_reveal (here: the actor, which may be an unfunded key)
+  let settledBy = 'nobody yet'
   const t1 = Date.now()
   while (Date.now() - t1 < 150_000) {
     l = await readLeague().catch(() => null)
     if (!l) break // finished and undelegated: no longer in the TEE
     if (l.status !== 2) break
-    if (!CRANK || Date.now() - t1 > 25_000) {
+    {
       settledBy = 'direct call'
       try {
-        const sig = await sendTee(creator, await progOf(creator).methods
+        const sig = await sendTee(actor, await progOf(actor).methods
           .settleAndReveal().accountsPartial({ league, secret, priceFeed: SOL_USD_FEED })
           .remainingAccounts(remaining).transaction())
-        link(`settle_and_reveal (r${round})`, sig, true)
+        link(`settle_and_reveal (r${round}) by ${HELPER ? 'unfunded key' : 'creator'}`, sig, true)
+        if (HELPER) out.helper.settle = 'ok'
       } catch (e) {
-        console.log('  settle_and_reveal error:', e.message)
+        console.log('  settle_and_reveal error:', e.message, e.sig ? `(sig ${e.sig.slice(0, 12)}…)` : '')
+        if (e.sig) {
+          const t = await teeOf(actor).getTransaction(e.sig, { maxSupportedTransactionVersion: 0, commitment: 'confirmed' }).catch(() => null)
+          for (const l of t?.meta?.logMessages ?? ['    (no logs returned for the failed settle)']) console.log('     ', l)
+        }
+        if (HELPER) out.helper.settle = `error: ${e.message}`
       }
     }
     await sleep(3000)
