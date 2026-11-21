@@ -1,11 +1,11 @@
-// Same VRF test as 01-vrf.mjs, but on a PUBLIC ephemeral rollup (devnet-eu or devnet-as).
+﻿// Same VRF test as 01-vrf.mjs, but on a PUBLIC ephemeral rollup (devnet-eu or devnet-as).
 // Needs the program built with the `er-test` feature (delegate_league then accepts public ER
 // validators). Uses the documented ER queue constant that start_round already pins.
 //
 //   ER=eu KEYPAIR_DIR=/dir node scripts/e2e/02-vrf-public-er.mjs
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { Connection, Transaction } from '@solana/web3.js'
+import { Connection } from '@solana/web3.js'
 import BN from 'bn.js'
 import {
   BASE_RPC, ER_VALIDATOR, decode, entryPda, explorerBase, leaguePda, loadKeypair, loadState, programFor,

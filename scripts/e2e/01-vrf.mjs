@@ -1,4 +1,4 @@
-// Stage 1: is a VRF request fulfilled INSIDE the Private ER, and does callback_close run there?
+﻿// Stage 1: is a VRF request fulfilled INSIDE the Private ER, and does callback_close run there?
 // Creates a 2-player league on devnet, delegates it to the TEE validator, requests a round and
 // waits for the VRF callback to flip the league to Live. The league is deliberately left publicly
 // readable in this stage (no permission) so the result can be observed.
@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import { Keypair, SystemProgram, Transaction, LAMPORTS_PER_SOL, Connection } from '@solana/web3.js'
 import BN from 'bn.js'
 import {
-  BASE_RPC, TEE_VALIDATOR, SOL_USD_FEED, decode, entryPda, explorerBase, explorerTee, leaguePda, loadKeypair,
+  BASE_RPC, TEE_VALIDATOR, decode, entryPda, explorerBase, explorerTee, leaguePda, loadKeypair,
   loadState, permissionPda, programFor, saveState, send, sleep, teeConnection,
 } from './lib.mjs'
 

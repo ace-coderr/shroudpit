@@ -26,12 +26,24 @@ pub enum ShroudError {
     RoundOpen,
     #[msg("settlement price is outside the settlement window")]
     OutsideSettleWindow,
-    #[msg("settlement window has not expired")]
-    WindowNotExpired,
     #[msg("invalid position")]
     InvalidPosition,
     #[msg("wrong set of entries supplied")]
     BadEntries,
     #[msg("arithmetic overflow")]
     Overflow,
+    #[msg("the nonce phase is closed")]
+    NoncePhaseClosed,
+    #[msg("a nonce was already committed this round")]
+    NonceAlreadyCommitted,
+    #[msg("nonce must not be all zero")]
+    ZeroNonce,
+    #[msg("the nonce phase is still open")]
+    NoncePhaseOpen,
+    #[msg("not enough nonces were committed")]
+    NotEnoughNonces,
+    #[msg("the VRF wait has not expired")]
+    VrfWaitNotExpired,
+    #[msg("secret account does not belong to this league")]
+    WrongSecret,
 }

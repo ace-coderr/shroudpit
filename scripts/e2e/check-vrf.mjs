@@ -1,8 +1,8 @@
-// Follow-up for 01-vrf: keep polling the league, and show the start_round logs and the queue.
+﻿// Follow-up for 01-vrf: keep polling the league, and show the start_round logs and the queue.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { Connection, PublicKey } from '@solana/web3.js'
-import { BASE_RPC, decode, loadKeypair, loadState, programFor, sleep, teeConnection } from './lib.mjs'
+import { PublicKey } from '@solana/web3.js'
+import { decode, loadKeypair, loadState, programFor, sleep, teeConnection } from './lib.mjs'
 
 const idl = JSON.parse(readFileSync('program/target/idl/shroudpit.json', 'utf8'))
 const creator = loadKeypair(join(process.env.KEYPAIR_DIR, 'shroudpit-devnet.json'))

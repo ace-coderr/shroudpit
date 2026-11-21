@@ -1,8 +1,8 @@
-// Shared helpers for the devnet end-to-end scripts. Reads keypairs from a directory outside the
+﻿// Shared helpers for the devnet end-to-end scripts. Reads keypairs from a directory outside the
 // repository (KEYPAIR_DIR) and keeps run state under .e2e/ (git-ignored).
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { Connection, Keypair, PublicKey, Transaction } from '@solana/web3.js'
+import { Connection, Keypair, PublicKey } from '@solana/web3.js'
 import * as anchor from '@anchor-lang/core'
 import nacl from 'tweetnacl'
 import { getAuthToken, verifyTeeRpcIntegrity } from '@magicblock-labs/ephemeral-rollups-sdk'

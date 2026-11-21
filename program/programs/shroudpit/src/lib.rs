@@ -8,8 +8,8 @@ use anchor_lang::solana_program::{
     instruction::{AccountMeta, Instruction},
     program::invoke_signed,
 };
+use solana_sha256_hasher::hashv;
 use anchor_lang::system_program::{transfer, Transfer};
-use magicblock_magic_program_api::{args::ScheduleTaskArgs, instruction::MagicBlockInstruction};
 use ephemeral_rollups_sdk::{
     access_control::{
         instructions::CreateEphemeralPermissionCpi,
@@ -23,19 +23,28 @@ use ephemeral_rollups_sdk::{
     cpi::DelegateConfig,
     ephem::{FoldableIntentBuilder, MagicIntentBundleBuilder},
     vrf::{
-        consts::{program_identity_pubkey, DEFAULT_EPHEMERAL_QUEUE},
+        consts::{program_identity_pubkey, scoped_vrf_identity_const, DEFAULT_EPHEMERAL_QUEUE},
         instructions::{create_request_randomness_ix_const, RequestRandomnessParams},
         types::SerializableAccountMeta,
     },
 };
+use magicblock_magic_program_api::{args::ScheduleTaskArgs, instruction::MagicBlockInstruction};
 
 use error::ShroudError;
 use state::*;
 
 declare_id!("69VymhYdXWsBVy9h5D1xdM6MU7DbBXF7rQHvGoUcW6K9");
 
-/// The identity PDA this program signs randomness requests with.
+/// The identity PDA this program signs randomness requests with. A `const` item so the PDA is
+/// derived at compile time rather than on every call.
 const PROGRAM_IDENTITY: Pubkey = program_identity_pubkey(&crate::ID);
+
+/// The scoped identity that must sign the VRF callback. The `#[vrf_callback]` macro would derive
+/// this inside the account constraint, i.e. at run time, which costs about 260k compute units
+/// and makes the callback fail. Declaring the field ourselves with a compile-time constant
+/// keeps the same check at no cost.
+const VRF_CALLBACK_IDENTITY: Pubkey =
+    Pubkey::new_from_array(scoped_vrf_identity_const(&crate::ID).0);
 
 #[ephemeral]
 #[program]
@@ -46,7 +55,8 @@ pub mod shroudpit {
     // Base layer
     // ------------------------------------------------------------------
 
-    /// Create a league. The creator pre-funds the rent of the league's ephemeral permission.
+    /// Create a league and its private `Secret` account. The creator pre-funds the rent of the
+    /// secret's ephemeral permission and a small commit buffer on the league.
     pub fn create_league(
         ctx: Context<CreateLeague>,
         league_id: u64,
@@ -55,6 +65,7 @@ pub mod shroudpit {
         max_secs: u32,
         max_players: u8,
         feed_id: u32,
+        close_mode: u8,
     ) -> Result<()> {
         require!(n_rounds >= 1 && n_rounds <= MAX_ROUNDS, ShroudError::InvalidParams);
         require!(
@@ -62,30 +73,43 @@ pub mod shroudpit {
             ShroudError::InvalidParams
         );
         require!(max_players >= 2 && max_players <= MAX_PLAYERS, ShroudError::InvalidParams);
+        require!(close_mode <= CloseMode::NoncesSlotAndVrf as u8, ShroudError::InvalidParams);
 
-        transfer(
-            CpiContext::new(
-                ctx.accounts.system_program.key(),
-                Transfer {
-                    from: ctx.accounts.creator.to_account_info(),
-                    to: ctx.accounts.league.to_account_info(),
-                },
-            ),
-            ephemeral_rollups_sdk::ephemeral_accounts::rent(EphemeralPermission::size_of(0) as u32),
-        )?;
+        let buffer = ephemeral_rollups_sdk::ephemeral_accounts::rent(
+            EphemeralPermission::size_of(0) as u32,
+        );
+        for to in [
+            ctx.accounts.league.to_account_info(),
+            ctx.accounts.secret.to_account_info(),
+        ] {
+            transfer(
+                CpiContext::new(
+                    ctx.accounts.system_program.key(),
+                    Transfer {
+                        from: ctx.accounts.creator.to_account_info(),
+                        to,
+                    },
+                ),
+                buffer,
+            )?;
+        }
 
+        let league_key = ctx.accounts.league.key();
         let league = &mut ctx.accounts.league;
         league.creator = ctx.accounts.creator.key();
         league.id = league_id;
         league.status = Status::Open as u8;
         league.n_rounds = n_rounds;
-        league.round = 0;
-        league.player_count = 0;
         league.max_players = max_players;
         league.bump = ctx.bumps.league;
+        league.close_mode = close_mode;
         league.min_secs = min_secs;
         league.max_secs = max_secs;
         league.feed = price::feed_address(feed_id);
+
+        let secret = &mut ctx.accounts.secret;
+        secret.league = league_key;
+        secret.bump = ctx.bumps.secret;
         Ok(())
     }
 
@@ -130,15 +154,28 @@ pub mod shroudpit {
         Ok(())
     }
 
-    /// Delegate the league to the TEE validator. Joining ends here.
+    /// Delegate the league and its secret to the TEE validator. Joining ends here.
     pub fn delegate_league(ctx: Context<DelegateLeague>) -> Result<()> {
         let creator = ctx.accounts.creator.key();
         let id = ctx.accounts.league_id_account_data()?;
+        let league_key = ctx.accounts.league.key();
+        let (secret_key, _) =
+            Pubkey::find_program_address(&[SECRET_SEED, league_key.as_ref()], &crate::ID);
+        require_keys_eq!(secret_key, ctx.accounts.secret.key(), ShroudError::WrongSecret);
+        let validator = ctx.accounts.validator.key();
         ctx.accounts.delegate_league(
             &ctx.accounts.creator,
             &[LEAGUE_SEED, creator.as_ref(), &id.to_le_bytes()],
             DelegateConfig {
-                validator: Some(ctx.accounts.validator.key()),
+                validator: Some(validator),
+                ..Default::default()
+            },
+        )?;
+        ctx.accounts.delegate_secret(
+            &ctx.accounts.creator,
+            &[SECRET_SEED, league_key.as_ref()],
+            DelegateConfig {
+                validator: Some(validator),
                 ..Default::default()
             },
         )?;
@@ -149,18 +186,17 @@ pub mod shroudpit {
     // Private Ephemeral Rollup (TEE)
     // ------------------------------------------------------------------
 
-    /// Make the league unreadable to everyone (no members): nobody can read the hidden
-    /// close time from RPC while the round is live.
-    pub fn init_league_permission(ctx: Context<InitLeaguePermission>) -> Result<()> {
-        if ctx.accounts.permission.lamports() > 0 {
+    /// Make the secret unreadable to everyone (no members): nobody can read the hidden close
+    /// time from RPC while the round is live. The league itself stays publicly readable.
+    pub fn init_secret_permission(ctx: Context<InitSecretPermission>) -> Result<()> {
+        if permission_exists(&ctx.accounts.permission) {
             return Ok(());
         }
-        let league = &ctx.accounts.league;
-        let id = league.id.to_le_bytes();
-        let signers: &[&[u8]] = &[LEAGUE_SEED, league.creator.as_ref(), &id, &[league.bump]];
+        let secret = &ctx.accounts.secret;
+        let signers: &[&[u8]] = &[SECRET_SEED, secret.league.as_ref(), &[secret.bump]];
         CreateEphemeralPermissionCpi {
-            payer: ctx.accounts.league.to_account_info(),
-            permissioned_account: ctx.accounts.league.to_account_info(),
+            payer: ctx.accounts.secret.to_account_info(),
+            permissioned_account: ctx.accounts.secret.to_account_info(),
             permission: ctx.accounts.permission.to_account_info(),
             vault: ctx.accounts.ephemeral_vault.to_account_info(),
             magic_program: ctx.accounts.magic_program.to_account_info(),
@@ -176,7 +212,7 @@ pub mod shroudpit {
 
     /// Make an entry readable only by its owner. Always private, owner is the only member.
     pub fn init_entry_permission(ctx: Context<InitEntryPermission>) -> Result<()> {
-        if ctx.accounts.permission.lamports() > 0 {
+        if permission_exists(&ctx.accounts.permission) {
             return Ok(());
         }
         let entry = &ctx.accounts.entry;
@@ -205,33 +241,107 @@ pub mod shroudpit {
         Ok(())
     }
 
-    /// Creator starts a round: requests VRF randomness. The callback picks the hidden close.
+    /// Creator opens a round: players now have `NONCE_WINDOW_SECS` to commit a private nonce.
+    /// Also restarts a nonce phase that expired with too few nonces.
     pub fn start_round(ctx: Context<StartRound>) -> Result<()> {
-        let league_key = ctx.accounts.league.key();
-        let seed = {
-            let league = &mut ctx.accounts.league;
-            require!(
-                league.status == Status::Open as u8 || league.status == Status::Between as u8,
-                ShroudError::WrongStatus
-            );
-            require!(league.player_count >= 2, ShroudError::WrongStatus);
-            league.status = Status::AwaitingVrf as u8;
-            let mut seed = league_key.to_bytes();
-            seed[31] ^= league.round;
-            seed
-        };
+        let now = Clock::get()?.unix_timestamp;
+        let league = &mut ctx.accounts.league;
+        let restart = league.status == Status::Nonces as u8
+            && now >= league.nonce_deadline
+            && league.nonce_count < MIN_NONCES;
+        require!(
+            league.status == Status::Open as u8 || league.status == Status::Between as u8 || restart,
+            ShroudError::WrongStatus
+        );
+        require!(league.player_count >= 2, ShroudError::WrongStatus);
+        league.epoch = league.epoch.checked_add(1).ok_or(ShroudError::Overflow)?;
+        league.status = Status::Nonces as u8;
+        league.nonce_deadline = now + NONCE_WINDOW_SECS;
+        league.nonce_count = 0;
+        Ok(())
+    }
 
+    /// Commit a private nonce for this round. Nonces are immutable once committed and must be in
+    /// before lock-in, so no player can choose their nonce after seeing anyone else's.
+    pub fn commit_nonce(ctx: Context<CommitNonce>, nonce: [u8; 32]) -> Result<()> {
+        require!(nonce != [0u8; 32], ShroudError::ZeroNonce);
+        require_private_permission(&ctx.accounts.permission, &ctx.accounts.entry.key())?;
+        let now = Clock::get()?.unix_timestamp;
+        let league = &mut ctx.accounts.league;
+        require!(league.status == Status::Nonces as u8, ShroudError::NoncePhaseClosed);
+        require!(now < league.nonce_deadline, ShroudError::NoncePhaseClosed);
+        let entry = &mut ctx.accounts.entry;
+        require!(entry.nonce_epoch != league.epoch, ShroudError::NonceAlreadyCommitted);
+        entry.nonce = nonce;
+        entry.nonce_epoch = league.epoch;
+        league.nonce_count += 1;
+        Ok(())
+    }
+
+    /// Close the nonce phase and derive the hidden close time. Callable by anyone once every
+    /// player has committed or the nonce deadline has passed.
+    ///
+    /// base seed = sha256(league, epoch, slot at lock-in, every committed (player, nonce)).
+    /// With `CloseMode::NoncesSlotAndVrf` a VRF request is made and its output is mixed in when it
+    /// arrives; if it does not arrive within `VRF_WAIT_SECS`, `finalize_without_vrf` derives the
+    /// close time from the base seed alone.
+    pub fn lock_in<'info>(ctx: Context<'info, LockIn<'info>>) -> Result<()> {
+        let clock = Clock::get()?;
+        let now = clock.unix_timestamp;
+        let league_key = ctx.accounts.league.key();
+        let (epoch, player_count, close_mode) = {
+            let l = &ctx.accounts.league;
+            require!(l.status == Status::Nonces as u8, ShroudError::WrongStatus);
+            require!(
+                l.nonce_count == l.player_count || now >= l.nonce_deadline,
+                ShroudError::NoncePhaseOpen
+            );
+            require!(l.nonce_count >= MIN_NONCES, ShroudError::NotEnoughNonces);
+            (l.epoch, l.player_count as usize, l.close_mode)
+        };
+        require!(ctx.remaining_accounts.len() == player_count, ShroudError::BadEntries);
+
+        let mut buf: Vec<u8> = Vec::with_capacity(48 + player_count * 64);
+        buf.extend_from_slice(league_key.as_ref());
+        buf.extend_from_slice(&epoch.to_le_bytes());
+        buf.extend_from_slice(&clock.slot.to_le_bytes());
+        let mut prev: Option<Pubkey> = None;
+        for acc in ctx.remaining_accounts {
+            let entry = load_entry(acc, &league_key, &mut prev)?;
+            if entry.nonce_epoch == epoch {
+                buf.extend_from_slice(entry.player.as_ref());
+                buf.extend_from_slice(&entry.nonce);
+            }
+        }
+        let base = hashv(&[&buf]).to_bytes();
+        ctx.accounts.secret.lock_slot = clock.slot;
+        ctx.accounts.secret.base_seed = base;
+
+        if close_mode == CloseMode::NoncesAndSlot as u8 {
+            finish_close(&mut ctx.accounts.league, &mut ctx.accounts.secret, None, now);
+            return Ok(());
+        }
+
+        ctx.accounts.league.status = Status::AwaitingVrf as u8;
+        ctx.accounts.league.vrf_deadline = now + VRF_WAIT_SECS;
         let params = RequestRandomnessParams {
             payer: ctx.accounts.payer.key(),
             oracle_queue: ctx.accounts.oracle_queue.key(),
             callback_program_id: ID,
             callback_discriminator: instruction::CallbackClose::DISCRIMINATOR.to_vec(),
-            caller_seed: seed,
-            accounts_metas: Some(vec![SerializableAccountMeta {
-                pubkey: league_key,
-                is_signer: false,
-                is_writable: true,
-            }]),
+            caller_seed: base,
+            accounts_metas: Some(vec![
+                SerializableAccountMeta {
+                    pubkey: league_key,
+                    is_signer: false,
+                    is_writable: true,
+                },
+                SerializableAccountMeta {
+                    pubkey: ctx.accounts.secret.key(),
+                    is_signer: false,
+                    is_writable: true,
+                },
+            ]),
             callback_args: None,
             ..Default::default()
         };
@@ -241,18 +351,24 @@ pub mod shroudpit {
         Ok(())
     }
 
-    /// VRF callback: derive the hidden close time. Only the VRF program can invoke this and
-    /// only while a request is outstanding, so a result cannot be replayed or injected.
+    /// VRF callback: mix the VRF output into the base seed and set the hidden close time. Only
+    /// the VRF program can invoke this and only while a request is outstanding, so a result
+    /// cannot be replayed, injected, or applied after the close time was already derived.
     pub fn callback_close(ctx: Context<CallbackClose>, randomness: [u8; 32]) -> Result<()> {
+        let now = Clock::get()?.unix_timestamp;
         let league = &mut ctx.accounts.league;
         require!(league.status == Status::AwaitingVrf as u8, ShroudError::WrongStatus);
+        finish_close(league, &mut ctx.accounts.secret, Some(randomness), now);
+        Ok(())
+    }
+
+    /// If the VRF output did not arrive in time, derive the close time from the base seed alone.
+    pub fn finalize_without_vrf(ctx: Context<FinalizeWithoutVrf>) -> Result<()> {
         let now = Clock::get()?.unix_timestamp;
-        let span = (league.max_secs - league.min_secs) as u64 + 1;
-        let offset = u64::from_le_bytes(randomness[0..8].try_into().unwrap()) % span;
-        league.randomness = randomness;
-        league.round_started_at = now;
-        league.close_at = now + league.min_secs as i64 + offset as i64;
-        league.status = Status::Live as u8;
+        let league = &mut ctx.accounts.league;
+        require!(league.status == Status::AwaitingVrf as u8, ShroudError::WrongStatus);
+        require!(now >= league.vrf_deadline, ShroudError::VrfWaitNotExpired);
+        finish_close(league, &mut ctx.accounts.secret, None, now);
         Ok(())
     }
 
@@ -264,16 +380,12 @@ pub mod shroudpit {
             (side == 0 && leverage == 0) || (side != 0 && leverage >= 1 && leverage <= MAX_LEVERAGE),
             ShroudError::InvalidPosition
         );
-        let permission = &ctx.accounts.permission;
-        require!(
-            permission.lamports() > 0 && *permission.owner == PERMISSION_PROGRAM_ID,
-            ShroudError::PermissionMissing
-        );
+        require_private_permission(&ctx.accounts.permission, &ctx.accounts.entry.key())?;
 
         let league = &ctx.accounts.league;
         let now = Clock::get()?.unix_timestamp;
         require!(league.status == Status::Live as u8, ShroudError::WrongStatus);
-        require!(now < league.close_at, ShroudError::RoundClosed);
+        require!(now < ctx.accounts.secret.close_at, ShroudError::RoundClosed);
 
         let q = price::fresh_quote(&ctx.accounts.price_feed, &league.feed, now, MAX_PRICE_AGE_SECS)?;
 
@@ -299,10 +411,11 @@ pub mod shroudpit {
     ///   cannot deadlock it either.
     pub fn settle_and_reveal<'info>(mut ctx: Context<'info, Settle<'info>>) -> Result<()> {
         let now = Clock::get()?.unix_timestamp;
-        let (live, close_at, feed) = {
+        let (live, feed) = {
             let l = &ctx.accounts.league;
-            (l.status == Status::Live as u8, l.close_at, l.feed)
+            (l.status == Status::Live as u8, l.feed)
         };
+        let close_at = ctx.accounts.secret.close_at;
         if !live || now < close_at {
             return Ok(());
         }
@@ -325,7 +438,9 @@ pub mod shroudpit {
     pub fn schedule_settle<'info>(ctx: Context<'info, ScheduleSettle<'info>>) -> Result<()> {
         let league = &ctx.accounts.league;
         require!(
-            league.status == Status::AwaitingVrf as u8 || league.status == Status::Live as u8,
+            league.status == Status::Nonces as u8
+                || league.status == Status::AwaitingVrf as u8
+                || league.status == Status::Live as u8,
             ShroudError::WrongStatus
         );
         require!(
@@ -336,6 +451,7 @@ pub mod shroudpit {
 
         let mut metas = vec![
             AccountMeta::new(league_key, false),
+            AccountMeta::new(ctx.accounts.secret.key(), false),
             AccountMeta::new_readonly(ctx.accounts.price_feed.key(), false),
             AccountMeta::new(ctx.accounts.magic_context.key(), false),
             AccountMeta::new_readonly(ctx.accounts.magic_program.key(), false),
@@ -350,17 +466,21 @@ pub mod shroudpit {
         };
 
         // Task ids are shared by every program on the validator: derive one from the league
-        // key and round so it is unique to this league and round.
+        // key, round and epoch so it is unique to this league and round.
         let kb = league_key.to_bytes();
         let mut b = [0u8; 8];
         for (i, v) in kb.iter().enumerate() {
             b[i % 8] ^= *v;
         }
         b[7] &= 0x7f;
-        let task_id = i64::from_le_bytes(b) ^ league.round as i64;
+        let task_id = i64::from_le_bytes(b) ^ league.round as i64 ^ ((league.epoch as i64) << 8);
 
         const INTERVAL_MS: i64 = 2_000;
-        let covered_secs = league.max_secs as i64 + SETTLE_WINDOW_SECS + 20;
+        let covered_secs = league.max_secs as i64
+            + NONCE_WINDOW_SECS
+            + VRF_WAIT_SECS
+            + SETTLE_WINDOW_SECS
+            + 30;
         let iterations = covered_secs * 1000 / INTERVAL_MS;
 
         let ix_data = bincode::serialize(&MagicBlockInstruction::ScheduleTask(ScheduleTaskArgs {
@@ -378,6 +498,7 @@ pub mod shroudpit {
         let mut infos = vec![
             ctx.accounts.payer.to_account_info(),
             ctx.accounts.league.to_account_info(),
+            ctx.accounts.secret.to_account_info(),
             ctx.accounts.price_feed.to_account_info(),
             ctx.accounts.magic_context.to_account_info(),
             ctx.accounts.magic_program.to_account_info(),
@@ -398,6 +519,64 @@ impl Entry {
     }
 }
 
+/// An ephemeral permission account is rent-free (0 lamports), so existence is judged from its
+/// owner and data. Layout: byte 0 discriminator, byte 1 bump, bytes 2..34 the permissioned
+/// account, byte 34 the privacy flag, then the members.
+fn permission_exists(permission: &AccountInfo) -> bool {
+    *permission.owner == PERMISSION_PROGRAM_ID && permission.data_len() >= 35
+}
+
+/// The permission must exist, belong to `permissioned`, and be private. Without this a position
+/// or nonce could be written while the entry is still publicly readable.
+fn require_private_permission(permission: &AccountInfo, permissioned: &Pubkey) -> Result<()> {
+    require!(permission_exists(permission), ShroudError::PermissionMissing);
+    let d = permission.try_borrow_data()?;
+    require!(d[2..34] == permissioned.to_bytes(), ShroudError::PermissionMissing);
+    require!(d[34] == 1, ShroudError::PermissionMissing);
+    Ok(())
+}
+
+/// Derive the hidden close time and open the round. `vrf` is the VRF output when it was mixed in.
+fn finish_close(league: &mut League, secret: &mut Secret, vrf: Option<[u8; 32]>, now: i64) {
+    let seed = match vrf {
+        Some(r) => {
+            secret.randomness = r;
+            hashv(&[&secret.base_seed, &r]).to_bytes()
+        }
+        None => secret.base_seed,
+    };
+    secret.vrf_used = vrf.is_some();
+    let span = (league.max_secs - league.min_secs) as u64 + 1;
+    let offset = u64::from_le_bytes(seed[0..8].try_into().unwrap()) % span;
+    secret.close_at = now + league.min_secs as i64 + offset as i64;
+    league.round_started_at = now;
+    league.status = Status::Live as u8;
+}
+
+/// Load and verify an entry passed as a remaining account: owned by this program, belongs to the
+/// league, is the canonical PDA for its player, and keys are strictly ascending (so no
+/// duplicates and a canonical order).
+fn load_entry<'info>(
+    acc: &'info AccountInfo<'info>,
+    league_key: &Pubkey,
+    prev: &mut Option<Pubkey>,
+) -> Result<Account<'info, Entry>> {
+    // Anchor checks owner and discriminator.
+    let entry: Account<Entry> = Account::try_from(acc)?;
+    require_keys_eq!(entry.league, *league_key, ShroudError::BadEntries);
+    let expected = Pubkey::create_program_address(
+        &[ENTRY_SEED, league_key.as_ref(), entry.player.as_ref(), &[entry.bump]],
+        &crate::ID,
+    )
+    .map_err(|_| error!(ShroudError::BadEntries))?;
+    require_keys_eq!(expected, *acc.key, ShroudError::BadEntries);
+    if let Some(p) = *prev {
+        require!(*acc.key > p, ShroudError::BadEntries);
+    }
+    *prev = Some(*acc.key);
+    Ok(entry)
+}
+
 /// Shared tail of settle and abort: score (or not), advance the league, commit.
 fn close_out<'info>(
     a: &mut Settle<'info>,
@@ -412,25 +591,13 @@ fn close_out<'info>(
     let finishing = round + 1 == a.league.n_rounds;
     let mut prev: Option<Pubkey> = None;
     let mut best: Option<(i64, Pubkey)> = None;
-    let mut infos: Vec<AccountInfo<'info>> = Vec::with_capacity(count + 1);
+    let mut infos: Vec<AccountInfo<'info>> = Vec::with_capacity(count + 2);
     infos.push(a.league.to_account_info());
+    infos.push(a.secret.to_account_info());
 
     for acc in remaining {
-        // Anchor checks owner and discriminator.
-        let mut entry: Account<Entry> = Account::try_from(acc)?;
+        let mut entry = load_entry(acc, &league_key, &mut prev)?;
         require!(acc.is_writable, ShroudError::BadEntries);
-        require_keys_eq!(entry.league, league_key, ShroudError::BadEntries);
-        let expected = Pubkey::create_program_address(
-            &[ENTRY_SEED, league_key.as_ref(), entry.player.as_ref(), &[entry.bump]],
-            &crate::ID,
-        )
-        .map_err(|_| error!(ShroudError::BadEntries))?;
-        require_keys_eq!(expected, *acc.key, ShroudError::BadEntries);
-        // Strictly ascending keys: no duplicates, and the set equals player_count entries.
-        if let Some(p) = prev {
-            require!(*acc.key > p, ShroudError::BadEntries);
-        }
-        prev = Some(*acc.key);
 
         if let Some((price, _)) = settle {
             if entry.round != round {
@@ -473,6 +640,7 @@ fn close_out<'info>(
     }
     // Serialise before the commit CPI reads the accounts.
     a.league.exit(&crate::ID)?;
+    a.secret.exit(&crate::ID)?;
 
     // The league PDA pays for the commit and signs for itself, so no external signer (and no
     // keeper) is needed: any caller or crank can trigger settlement.
@@ -510,6 +678,14 @@ pub struct CreateLeague<'info> {
         bump
     )]
     pub league: Account<'info, League>,
+    #[account(
+        init,
+        payer = creator,
+        space = 8 + Secret::INIT_SPACE,
+        seeds = [SECRET_SEED, league.key().as_ref()],
+        bump
+    )]
+    pub secret: Account<'info, Secret>,
     pub system_program: Program<'info, System>,
 }
 
@@ -557,6 +733,9 @@ pub struct DelegateLeague<'info> {
     /// CHECK: the league PDA being delegated; creator and id are validated in the handler
     #[account(mut, del)]
     pub league: UncheckedAccount<'info>,
+    /// CHECK: the league's secret PDA; checked against the league in the handler
+    #[account(mut, del)]
+    pub secret: UncheckedAccount<'info>,
     /// CHECK: must be the TEE validator
     #[account(address = TEE_VALIDATOR @ ShroudError::WrongValidator)]
     pub validator: UncheckedAccount<'info>,
@@ -578,17 +757,23 @@ impl<'info> DelegateLeague<'info> {
 }
 
 #[derive(Accounts)]
-pub struct InitLeaguePermission<'info> {
+pub struct InitSecretPermission<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
     #[account(
-        mut,
         seeds = [LEAGUE_SEED, league.creator.as_ref(), &league.id.to_le_bytes()],
         bump = league.bump
     )]
     pub league: Account<'info, League>,
+    #[account(
+        mut,
+        seeds = [SECRET_SEED, league.key().as_ref()],
+        bump = secret.bump,
+        constraint = secret.league == league.key() @ ShroudError::WrongSecret
+    )]
+    pub secret: Account<'info, Secret>,
     /// CHECK: verified by the permission program; address pinned to the expected PDA
-    #[account(mut, seeds = [PERMISSION_SEED, league.key().as_ref()], bump, seeds::program = PERMISSION_PROGRAM_ID)]
+    #[account(mut, seeds = [PERMISSION_SEED, secret.key().as_ref()], bump, seeds::program = PERMISSION_PROGRAM_ID)]
     pub permission: UncheckedAccount<'info>,
     /// CHECK: permission program
     #[account(address = PERMISSION_PROGRAM_ID)]
@@ -625,10 +810,42 @@ pub struct InitEntryPermission<'info> {
     pub magic_program: UncheckedAccount<'info>,
 }
 
-#[vrf]
 #[derive(Accounts)]
 pub struct StartRound<'info> {
-    #[account(mut, constraint = payer.key() == league.creator @ ShroudError::NotCreator)]
+    #[account(constraint = creator.key() == league.creator @ ShroudError::NotCreator)]
+    pub creator: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [LEAGUE_SEED, league.creator.as_ref(), &league.id.to_le_bytes()],
+        bump = league.bump
+    )]
+    pub league: Account<'info, League>,
+}
+
+#[derive(Accounts)]
+pub struct CommitNonce<'info> {
+    pub player: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [LEAGUE_SEED, league.creator.as_ref(), &league.id.to_le_bytes()],
+        bump = league.bump
+    )]
+    pub league: Account<'info, League>,
+    #[account(
+        mut,
+        seeds = [ENTRY_SEED, league.key().as_ref(), player.key().as_ref()],
+        bump = entry.bump
+    )]
+    pub entry: Account<'info, Entry>,
+    /// CHECK: the entry's permission account; existence and owner checked in the handler
+    #[account(seeds = [PERMISSION_SEED, entry.key().as_ref()], bump, seeds::program = PERMISSION_PROGRAM_ID)]
+    pub permission: UncheckedAccount<'info>,
+}
+
+#[vrf]
+#[derive(Accounts)]
+pub struct LockIn<'info> {
+    #[account(mut)]
     pub payer: Signer<'info>,
     #[account(
         mut,
@@ -636,16 +853,50 @@ pub struct StartRound<'info> {
         bump = league.bump
     )]
     pub league: Account<'info, League>,
+    #[account(
+        mut,
+        seeds = [SECRET_SEED, league.key().as_ref()],
+        bump = secret.bump,
+        constraint = secret.league == league.key() @ ShroudError::WrongSecret
+    )]
+    pub secret: Account<'info, Secret>,
     /// CHECK: the ER VRF queue
     #[account(mut, address = DEFAULT_EPHEMERAL_QUEUE)]
     pub oracle_queue: UncheckedAccount<'info>,
 }
 
+/// `vrf_program_identity` is declared here, with a compile-time constant address, instead of
+/// being injected by `#[vrf_callback]` (see `VRF_CALLBACK_IDENTITY`).
 #[vrf_callback]
 #[derive(Accounts)]
 pub struct CallbackClose<'info> {
+    #[account(address = VRF_CALLBACK_IDENTITY)]
+    pub vrf_program_identity: Signer<'info>,
     #[account(mut)]
     pub league: Account<'info, League>,
+    #[account(
+        mut,
+        constraint = secret.league == league.key() @ ShroudError::WrongSecret
+    )]
+    pub secret: Account<'info, Secret>,
+}
+
+#[derive(Accounts)]
+pub struct FinalizeWithoutVrf<'info> {
+    pub payer: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [LEAGUE_SEED, league.creator.as_ref(), &league.id.to_le_bytes()],
+        bump = league.bump
+    )]
+    pub league: Account<'info, League>,
+    #[account(
+        mut,
+        seeds = [SECRET_SEED, league.key().as_ref()],
+        bump = secret.bump,
+        constraint = secret.league == league.key() @ ShroudError::WrongSecret
+    )]
+    pub secret: Account<'info, Secret>,
 }
 
 #[derive(Accounts)]
@@ -656,6 +907,12 @@ pub struct SetPosition<'info> {
         bump = league.bump
     )]
     pub league: Account<'info, League>,
+    #[account(
+        seeds = [SECRET_SEED, league.key().as_ref()],
+        bump = secret.bump,
+        constraint = secret.league == league.key() @ ShroudError::WrongSecret
+    )]
+    pub secret: Account<'info, Secret>,
     #[account(
         mut,
         seeds = [ENTRY_SEED, league.key().as_ref(), player.key().as_ref()],
@@ -678,6 +935,13 @@ pub struct Settle<'info> {
         bump = league.bump
     )]
     pub league: Account<'info, League>,
+    #[account(
+        mut,
+        seeds = [SECRET_SEED, league.key().as_ref()],
+        bump = secret.bump,
+        constraint = secret.league == league.key() @ ShroudError::WrongSecret
+    )]
+    pub secret: Account<'info, Secret>,
     /// CHECK: pinned to league.feed and owner-checked in the handler
     pub price_feed: UncheckedAccount<'info>,
 }
@@ -693,6 +957,13 @@ pub struct ScheduleSettle<'info> {
         bump = league.bump
     )]
     pub league: Account<'info, League>,
+    #[account(
+        mut,
+        seeds = [SECRET_SEED, league.key().as_ref()],
+        bump = secret.bump,
+        constraint = secret.league == league.key() @ ShroudError::WrongSecret
+    )]
+    pub secret: Account<'info, Secret>,
     /// CHECK: pinned to league.feed
     #[account(address = league.feed @ ShroudError::WrongFeed)]
     pub price_feed: UncheckedAccount<'info>,

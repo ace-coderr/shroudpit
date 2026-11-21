@@ -5,4 +5,7 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   base: '/shroudpit/',
   plugins: [react()],
+  // web3.js and the wallet adapters expect Node-style globals.
+  define: { global: 'globalThis' },
+  build: { chunkSizeWarningLimit: 1500 },
 })

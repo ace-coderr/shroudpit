@@ -10,8 +10,9 @@
     {
       "name": "callback_close",
       "docs": [
-        "VRF callback: derive the hidden close time. Only the VRF program can invoke this and",
-        "only while a request is outstanding, so a result cannot be replayed or injected."
+        "VRF callback: mix the VRF output into the base seed and set the hidden close time. Only",
+        "the VRF program can invoke this and only while a request is outstanding, so a result",
+        "cannot be replayed, injected, or applied after the close time was already derived."
       ],
       "discriminator": [
         94,
@@ -26,14 +27,15 @@
       "accounts": [
         {
           "name": "vrf_program_identity",
-          "docs": [
-            "Scoped VRF identity PDA, bound to this program. Its presence as a signer proves",
-            "the callback was issued by the VRF program for this program."
-          ],
-          "signer": true
+          "signer": true,
+          "address": "9cSb2quoZsqmAVaqNapwR7PvD5fJXs5jw9tV6wJqjgCP"
         },
         {
           "name": "league",
+          "writable": true
+        },
+        {
+          "name": "secret",
           "writable": true
         }
       ],
@@ -50,9 +52,163 @@
       ]
     },
     {
+      "name": "commit_nonce",
+      "docs": [
+        "Commit a private nonce for this round. Nonces are immutable once committed and must be in",
+        "before lock-in, so no player can choose their nonce after seeing anyone else's."
+      ],
+      "discriminator": [
+        177,
+        42,
+        103,
+        238,
+        102,
+        178,
+        53,
+        104
+      ],
+      "accounts": [
+        {
+          "name": "player",
+          "signer": true
+        },
+        {
+          "name": "league",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  101,
+                  97,
+                  103,
+                  117,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league.creator",
+                "account": "League"
+              },
+              {
+                "kind": "account",
+                "path": "league.id",
+                "account": "League"
+              }
+            ]
+          }
+        },
+        {
+          "name": "entry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  110,
+                  116,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league"
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
+          "name": "permission",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  109,
+                  105,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  58
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "entry"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                136,
+                161,
+                10,
+                196,
+                33,
+                152,
+                1,
+                214,
+                246,
+                106,
+                29,
+                60,
+                6,
+                152,
+                192,
+                102,
+                169,
+                175,
+                212,
+                217,
+                180,
+                252,
+                231,
+                71,
+                151,
+                141,
+                209,
+                5,
+                168,
+                212,
+                103,
+                82
+              ]
+            }
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "nonce",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "create_league",
       "docs": [
-        "Create a league. The creator pre-funds the rent of the league's ephemeral permission."
+        "Create a league and its private `Secret` account. The creator pre-funds the rent of the",
+        "secret's ephemeral permission and a small commit buffer on the league."
       ],
       "discriminator": [
         129,
@@ -98,6 +254,29 @@
           }
         },
         {
+          "name": "secret",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  99,
+                  114,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league"
+              }
+            ]
+          }
+        },
+        {
           "name": "system_program",
           "address": "11111111111111111111111111111111"
         }
@@ -126,6 +305,10 @@
         {
           "name": "feed_id",
           "type": "u32"
+        },
+        {
+          "name": "close_mode",
+          "type": "u8"
         }
       ]
     },
@@ -332,7 +515,7 @@
     {
       "name": "delegate_league",
       "docs": [
-        "Delegate the league to the TEE validator. Joining ends here."
+        "Delegate the league and its secret to the TEE validator. Joining ends here."
       ],
       "discriminator": [
         202,
@@ -486,6 +669,141 @@
           "writable": true
         },
         {
+          "name": "buffer_secret",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "secret"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                76,
+                119,
+                216,
+                248,
+                153,
+                60,
+                193,
+                156,
+                51,
+                220,
+                163,
+                153,
+                73,
+                67,
+                149,
+                80,
+                61,
+                193,
+                90,
+                201,
+                249,
+                146,
+                250,
+                50,
+                110,
+                228,
+                210,
+                149,
+                69,
+                82,
+                195,
+                104
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_secret",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "secret"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_secret",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "secret"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "secret",
+          "writable": true
+        },
+        {
           "name": "validator",
           "address": "MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo"
         },
@@ -500,6 +818,81 @@
         {
           "name": "system_program",
           "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "finalize_without_vrf",
+      "docs": [
+        "If the VRF output did not arrive in time, derive the close time from the base seed alone."
+      ],
+      "discriminator": [
+        69,
+        249,
+        44,
+        36,
+        248,
+        194,
+        72,
+        251
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "league",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  101,
+                  97,
+                  103,
+                  117,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league.creator",
+                "account": "League"
+              },
+              {
+                "kind": "account",
+                "path": "league.id",
+                "account": "League"
+              }
+            ]
+          }
+        },
+        {
+          "name": "secret",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  99,
+                  114,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league"
+              }
+            ]
+          }
         }
       ],
       "args": []
@@ -635,20 +1028,20 @@
       "args": []
     },
     {
-      "name": "init_league_permission",
+      "name": "init_secret_permission",
       "docs": [
-        "Make the league unreadable to everyone (no members): nobody can read the hidden",
-        "close time from RPC while the round is live."
+        "Make the secret unreadable to everyone (no members): nobody can read the hidden close",
+        "time from RPC while the round is live. The league itself stays publicly readable."
       ],
       "discriminator": [
-        129,
-        142,
-        235,
-        190,
-        192,
-        58,
+        119,
+        255,
+        46,
+        25,
+        227,
+        234,
         106,
-        165
+        24
       ],
       "accounts": [
         {
@@ -658,7 +1051,6 @@
         },
         {
           "name": "league",
-          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -686,6 +1078,29 @@
           }
         },
         {
+          "name": "secret",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  99,
+                  114,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league"
+              }
+            ]
+          }
+        },
+        {
           "name": "permission",
           "writable": true,
           "pda": {
@@ -708,7 +1123,7 @@
               },
               {
                 "kind": "account",
-                "path": "league"
+                "path": "secret"
               }
             ],
             "program": {
@@ -842,6 +1257,125 @@
               }
             ]
           }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "lock_in",
+      "docs": [
+        "Close the nonce phase and derive the hidden close time. Callable by anyone once every",
+        "player has committed or the nonce deadline has passed.",
+        "",
+        "base seed = sha256(league, epoch, slot at lock-in, every committed (player, nonce)).",
+        "With `CloseMode::NoncesSlotAndVrf` a VRF request is made and its output is mixed in when it",
+        "arrives; if it does not arrive within `VRF_WAIT_SECS`, `finalize_without_vrf` derives the",
+        "close time from the base seed alone."
+      ],
+      "discriminator": [
+        251,
+        54,
+        199,
+        39,
+        183,
+        44,
+        105,
+        56
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "league",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  101,
+                  97,
+                  103,
+                  117,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league.creator",
+                "account": "League"
+              },
+              {
+                "kind": "account",
+                "path": "league.id",
+                "account": "League"
+              }
+            ]
+          }
+        },
+        {
+          "name": "secret",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  99,
+                  114,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league"
+              }
+            ]
+          }
+        },
+        {
+          "name": "oracle_queue",
+          "writable": true,
+          "address": "5hBR571xnXppuCPveTrctfTU7tJLSN94nq7kv7FRK5Tc"
+        },
+        {
+          "name": "program_identity",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  100,
+                  101,
+                  110,
+                  116,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "vrf_program",
+          "address": "Vrf1RNUjXmQGjmQrQLvJHs9SNkvDJEsRVFPkfSQUwGz"
+        },
+        {
+          "name": "slot_hashes",
+          "address": "SysvarS1otHashes111111111111111111111111111"
         },
         {
           "name": "system_program",
@@ -1007,6 +1541,29 @@
           }
         },
         {
+          "name": "secret",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  99,
+                  114,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league"
+              }
+            ]
+          }
+        },
+        {
           "name": "price_feed"
         },
         {
@@ -1066,6 +1623,28 @@
                 "kind": "account",
                 "path": "league.id",
                 "account": "League"
+              }
+            ]
+          }
+        },
+        {
+          "name": "secret",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  99,
+                  114,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league"
               }
             ]
           }
@@ -1228,6 +1807,29 @@
           }
         },
         {
+          "name": "secret",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  99,
+                  114,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league"
+              }
+            ]
+          }
+        },
+        {
           "name": "price_feed"
         },
         {
@@ -1245,7 +1847,8 @@
     {
       "name": "start_round",
       "docs": [
-        "Creator starts a round: requests VRF randomness. The callback picks the hidden close."
+        "Creator opens a round: players now have `NONCE_WINDOW_SECS` to commit a private nonce.",
+        "Also restarts a nonce phase that expired with too few nonces."
       ],
       "discriminator": [
         144,
@@ -1259,8 +1862,7 @@
       ],
       "accounts": [
         {
-          "name": "payer",
-          "writable": true,
+          "name": "creator",
           "signer": true
         },
         {
@@ -1291,43 +1893,6 @@
               }
             ]
           }
-        },
-        {
-          "name": "oracle_queue",
-          "writable": true,
-          "address": "5hBR571xnXppuCPveTrctfTU7tJLSN94nq7kv7FRK5Tc"
-        },
-        {
-          "name": "program_identity",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  105,
-                  100,
-                  101,
-                  110,
-                  116,
-                  105,
-                  116,
-                  121
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "vrf_program",
-          "address": "Vrf1RNUjXmQGjmQrQLvJHs9SNkvDJEsRVFPkfSQUwGz"
-        },
-        {
-          "name": "slot_hashes",
-          "address": "SysvarS1otHashes111111111111111111111111111"
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
         }
       ],
       "args": []
@@ -1358,6 +1923,19 @@
         174,
         87,
         182
+      ]
+    },
+    {
+      "name": "Secret",
+      "discriminator": [
+        17,
+        168,
+        51,
+        21,
+        155,
+        143,
+        2,
+        68
       ]
     }
   ],
@@ -1424,23 +2002,53 @@
     },
     {
       "code": 6012,
-      "name": "WindowNotExpired",
-      "msg": "settlement window has not expired"
-    },
-    {
-      "code": 6013,
       "name": "InvalidPosition",
       "msg": "invalid position"
     },
     {
-      "code": 6014,
+      "code": 6013,
       "name": "BadEntries",
       "msg": "wrong set of entries supplied"
     },
     {
-      "code": 6015,
+      "code": 6014,
       "name": "Overflow",
       "msg": "arithmetic overflow"
+    },
+    {
+      "code": 6015,
+      "name": "NoncePhaseClosed",
+      "msg": "the nonce phase is closed"
+    },
+    {
+      "code": 6016,
+      "name": "NonceAlreadyCommitted",
+      "msg": "a nonce was already committed this round"
+    },
+    {
+      "code": 6017,
+      "name": "ZeroNonce",
+      "msg": "nonce must not be all zero"
+    },
+    {
+      "code": 6018,
+      "name": "NoncePhaseOpen",
+      "msg": "the nonce phase is still open"
+    },
+    {
+      "code": 6019,
+      "name": "NotEnoughNonces",
+      "msg": "not enough nonces were committed"
+    },
+    {
+      "code": 6020,
+      "name": "VrfWaitNotExpired",
+      "msg": "the VRF wait has not expired"
+    },
+    {
+      "code": 6021,
+      "name": "WrongSecret",
+      "msg": "secret account does not belong to this league"
     }
   ],
   "types": [
@@ -1467,6 +2075,22 @@
               "Round this position belongs to; a mismatch means the position is stale and is reset."
             ],
             "type": "u8"
+          },
+          {
+            "name": "nonce",
+            "docs": [
+              "Private nonce committed for the current epoch. Immutable once committed."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "nonce_epoch",
+            "type": "u16"
           },
           {
             "name": "side",
@@ -1515,6 +2139,10 @@
     },
     {
       "name": "League",
+      "docs": [
+        "Publicly readable inside the TEE so clients can follow the phase. Everything that would",
+        "reveal the close time lives in `Secret`."
+      ],
       "type": {
         "kind": "struct",
         "fields": [
@@ -1554,6 +2182,10 @@
             "type": "u8"
           },
           {
+            "name": "close_mode",
+            "type": "u8"
+          },
+          {
             "name": "min_secs",
             "type": "u32"
           },
@@ -1569,27 +2201,27 @@
             "type": "pubkey"
           },
           {
-            "name": "close_at",
+            "name": "epoch",
             "docs": [
-              "Hidden until settlement: unix time the round closes (set by the VRF callback)."
+              "Incremented every time a nonce phase opens, so stale nonces can never be reused."
             ],
+            "type": "u16"
+          },
+          {
+            "name": "nonce_deadline",
+            "type": "i64"
+          },
+          {
+            "name": "nonce_count",
+            "type": "u8"
+          },
+          {
+            "name": "vrf_deadline",
             "type": "i64"
           },
           {
             "name": "round_started_at",
             "type": "i64"
-          },
-          {
-            "name": "randomness",
-            "docs": [
-              "Latest VRF output, kept so a settlement can be audited against the VRF proof."
-            ],
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
           },
           {
             "name": "settle_price",
@@ -1608,6 +2240,68 @@
               "Set when the league finishes: highest rating (ties: lowest key)."
             ],
             "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Secret",
+      "docs": [
+        "Private (no members) while the round is live; revealed when committed at settlement so the",
+        "derivation of the close time can be audited."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "league",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "vrf_used",
+            "type": "bool"
+          },
+          {
+            "name": "close_at",
+            "docs": [
+              "Unix time the round closes."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "lock_slot",
+            "docs": [
+              "Slot recorded at lock-in."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "base_seed",
+            "docs": [
+              "sha256 over the league, epoch, lock slot and every committed (player, nonce)."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "randomness",
+            "docs": [
+              "VRF output, when it was mixed in."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           }
         ]
       }
