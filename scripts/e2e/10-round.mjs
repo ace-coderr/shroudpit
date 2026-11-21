@@ -1,4 +1,4 @@
-﻿// Full round on devnet with several wallets: create, join, delegate to the TEE, permissions,
+// Full round on devnet with several wallets: create, join, delegate to the TEE, permissions,
 // nonce commits, lock-in (optionally with VRF), positions, the "rejected after close" check,
 // settlement, and an independent recomputation of the close-time derivation.
 //
@@ -246,7 +246,7 @@ console.log(`league status=${lb.status} (3 = Between, 4 = Finished) round=${lb.r
 const rows = []
 for (const w of wallets) {
   const e = decode(baseProg, 'entry', (await base.getAccountInfo(entries[w.publicKey.toBase58()])).data)
-  rows.push({ player: short(w.publicKey), side: e.side, lev: e.leverage, entry_price: e.entryPrice.toString(), last_ret_bps: e.lastRetBps.toString(), rating: e.rating.toString(), nonce: Buffer.from(e.nonce).toString('hex').slice(0, 12) + 'â€¦' })
+  rows.push({ player: short(w.publicKey), side: e.side, lev: e.leverage, entry_price: e.entryPrice.toString(), last_ret_bps: e.lastRetBps.toString(), rating: e.rating.toString(), nonce: Buffer.from(e.nonce).toString('hex').slice(0, 12) + '…' })
   out[`entry_${short(w.publicKey)}`] = { nonce: Buffer.from(e.nonce).toString('hex'), epoch: e.nonceEpoch }
 }
 console.table(rows)

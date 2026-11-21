@@ -1,4 +1,4 @@
-﻿// Follow-up for 01-vrf: keep polling the league, and show the start_round logs and the queue.
+// Follow-up for 01-vrf: keep polling the league, and show the start_round logs and the queue.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { PublicKey } from '@solana/web3.js'

@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { PublicKey } from '@solana/web3.js'
 import {
@@ -153,7 +153,7 @@ export default function Desk() {
 
   if (!key) return <section className="page"><p className="notice notice--bad">That league address is not valid.</p></section>
   if (error) return <section className="page"><p className="notice notice--bad">{error}</p></section>
-  if (!league) return <section className="page"><p className="muted">Reading the ledgerâ€¦</p></section>
+  if (!league) return <section className="page"><p className="muted">Reading the ledger…</p></section>
 
   const e = mine.data?.entry ?? null
   const sealed = mine.data?.sealed ?? false
@@ -169,7 +169,7 @@ export default function Desk() {
       <header className="page__head">
         <p className="eyebrow">Sealed Desk</p>
         <h1 className="page__title">
-          {STATUS_LABEL[league.status]} Â· round {Math.min(league.round + 1, league.nRounds)} of {league.nRounds}
+          {STATUS_LABEL[league.status]} · round {Math.min(league.round + 1, league.nRounds)} of {league.nRounds}
         </h1>
         <p className="page__lede mono small">{league.key.toBase58()}</p>
         <nav className="subnav">
@@ -187,11 +187,11 @@ export default function Desk() {
           <div className="panel">
             <h3>Price</h3>
             <p className="price mono">
-              {price.data ? `$${price.data.price.toFixed(4)}` : 'â€¦'}
+              {price.data ? `$${price.data.price.toFixed(4)}` : '…'}
             </p>
             <p className="muted small">
               Live oracle price, updated every second inside the rollup
-              {price.data ? ` Â· ${Math.max(0, Math.round(now - price.data.publishTime))}s old` : ''}.
+              {price.data ? ` · ${Math.max(0, Math.round(now - price.data.publishTime))}s old` : ''}.
             </p>
           </div>
           <div className="panel">
@@ -201,7 +201,7 @@ export default function Desk() {
                 <li key={p.key.toBase58()}>
                   <span className="mono">{short(p.player.toBase58(), 4, 4)}</span>
                   {signer && p.player.equals(signer.publicKey) && <em> you</em>}
-                  <span className="roster__pos">{live || league.status === 5 ? <Seal width="7ch" /> : <span className="muted">â€”</span>}</span>
+                  <span className="roster__pos">{live || league.status === 5 ? <Seal width="7ch" /> : <span className="muted">—</span>}</span>
                 </li>
               ))}
             </ul>
@@ -219,7 +219,7 @@ export default function Desk() {
                   signing a message with your wallet; no funds move.
                 </p>
                 <button className="btn btn--ink" disabled={busy === 'unlock'} onClick={() => void unlock()}>
-                  {busy === 'unlock' ? 'Unlockingâ€¦' : 'Unlock my desk'}
+                  {busy === 'unlock' ? 'Unlocking…' : 'Unlock my desk'}
                 </button>
               </>
             )}
@@ -261,7 +261,7 @@ export default function Desk() {
                       ))}
                     </div>
                     <label className="range">
-                      Leverage <b className="mono">{side === 0 ? 'â€“' : `Ã—${leverage}`}</b>
+                      Leverage <b className="mono">{side === 0 ? '–' : `×${leverage}`}</b>
                       <input type="range" min={1} max={5} value={leverage} disabled={side === 0} onChange={(ev) => setLeverage(Number(ev.target.value))} />
                     </label>
                     <button
@@ -269,7 +269,7 @@ export default function Desk() {
                       disabled={!!busy}
                       onClick={() => void act('Place position', () => setPosition(signer!, key, league.feed, side, side === 0 ? 0 : leverage))}
                     >
-                      {busy === 'Place position' ? 'Sealingâ€¦' : 'Place position'}
+                      {busy === 'Place position' ? 'Sealing…' : 'Place position'}
                     </button>
                   </div>
                 )}
@@ -279,7 +279,7 @@ export default function Desk() {
                     <h4>My sealed position</h4>
                     <p className="mono big">
                       <Redacted revealed={showMine}>
-                        {e.side === 0 ? 'Flat' : `${SIDE[String(e.side)]} Ã—${e.leverage} from $${(e.entryPrice / 1e8).toFixed(4)}`}
+                        {e.side === 0 ? 'Flat' : `${SIDE[String(e.side)]} ×${e.leverage} from $${(e.entryPrice / 1e8).toFixed(4)}`}
                       </Redacted>
                     </p>
                     {unrealised !== null && live && (
@@ -311,7 +311,7 @@ export default function Desk() {
             {league.status === 3 || league.status === 4 ? (
               <p className="ok">
                 {league.status === 4 ? 'The league has finished.' : 'The round settled.'}{' '}
-                <Link to={`/audit/${key.toBase58()}`}>Reveal &amp; audit</Link> Â·{' '}
+                <Link to={`/audit/${key.toBase58()}`}>Reveal &amp; audit</Link> ·{' '}
                 <Link to={`/standings/${key.toBase58()}`}>Standings</Link>
               </p>
             ) : null}

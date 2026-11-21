@@ -1,4 +1,4 @@
-﻿import { AnchorProvider, BorshAccountsCoder, Program } from '@anchor-lang/core'
+import { AnchorProvider, BorshAccountsCoder, Program } from '@anchor-lang/core'
 import type { Idl } from '@anchor-lang/core'
 import { DELEGATION_PROGRAM_ID, permissionPdaFromAccount } from '@magicblock-labs/ephemeral-rollups-sdk'
 import { Connection, PublicKey } from '@solana/web3.js'

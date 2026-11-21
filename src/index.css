@@ -554,3 +554,5 @@ h3 {
 @keyframes pulse { 70% { box-shadow: 0 0 0 7px rgba(47, 93, 52, 0); } 100% { box-shadow: 0 0 0 0 rgba(47, 93, 52, 0); } }
 @keyframes breathe { 50% { opacity: 0.82; } }
 @keyframes nudge { 50% { transform: translateX(3px); } }
+
+.page__lede { overflow-wrap: anywhere; }

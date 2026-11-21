@@ -1,4 +1,4 @@
-﻿// Same VRF test as 01-vrf.mjs, but on a PUBLIC ephemeral rollup (devnet-eu or devnet-as).
+// Same VRF test as 01-vrf.mjs, but on a PUBLIC ephemeral rollup (devnet-eu or devnet-as).
 // Needs the program built with the `er-test` feature (delegate_league then accepts public ER
 // validators). Uses the documented ER queue constant that start_round already pins.
 //

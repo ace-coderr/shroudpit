@@ -1,4 +1,4 @@
-﻿// Does the Private ER see a FRESH copy of an undelegated base-layer account after it changes?
+// Does the Private ER see a FRESH copy of an undelegated base-layer account after it changes?
 // A League account is created on the base layer (undelegated), a TEE transaction reads it
 // (probe_account logs what the TEE sees), the account is then changed on the base layer
 // (join_league bumps player_count 0 -> 1) and the TEE is probed repeatedly.

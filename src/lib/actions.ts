@@ -1,4 +1,4 @@
-﻿import { Keypair, PublicKey, Transaction } from '@solana/web3.js'
+import { Keypair, PublicKey, Transaction } from '@solana/web3.js'
 import type { Connection } from '@solana/web3.js'
 import BN from 'bn.js'
 import nacl from 'tweetnacl'

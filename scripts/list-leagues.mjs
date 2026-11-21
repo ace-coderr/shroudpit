@@ -1,4 +1,4 @@
-﻿// Read-only: can leagues be discovered with no backend? Lists League accounts that are
+// Read-only: can leagues be discovered with no backend? Lists League accounts that are
 // undelegated (owned by the program) or delegated (owned by the delegation program, data kept).
 import { readFileSync } from 'node:fs'
 import { Connection, PublicKey } from '@solana/web3.js'

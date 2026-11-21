@@ -1,4 +1,4 @@
-﻿// Shared helpers for the devnet end-to-end scripts. Reads keypairs from a directory outside the
+// Shared helpers for the devnet end-to-end scripts. Reads keypairs from a directory outside the
 // repository (KEYPAIR_DIR) and keeps run state under .e2e/ (git-ignored).
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
