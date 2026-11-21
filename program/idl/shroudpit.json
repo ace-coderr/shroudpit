@@ -1,0 +1,1616 @@
+{
+  "address": "69VymhYdXWsBVy9h5D1xdM6MU7DbBXF7rQHvGoUcW6K9",
+  "metadata": {
+    "name": "shroudpit",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Shroudpit: private trading leagues on Solana"
+  },
+  "instructions": [
+    {
+      "name": "callback_close",
+      "docs": [
+        "VRF callback: derive the hidden close time. Only the VRF program can invoke this and",
+        "only while a request is outstanding, so a result cannot be replayed or injected."
+      ],
+      "discriminator": [
+        94,
+        43,
+        49,
+        44,
+        76,
+        109,
+        31,
+        17
+      ],
+      "accounts": [
+        {
+          "name": "vrf_program_identity",
+          "docs": [
+            "Scoped VRF identity PDA, bound to this program. Its presence as a signer proves",
+            "the callback was issued by the VRF program for this program."
+          ],
+          "signer": true
+        },
+        {
+          "name": "league",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "randomness",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "create_league",
+      "docs": [
+        "Create a league. The creator pre-funds the rent of the league's ephemeral permission."
+      ],
+      "discriminator": [
+        129,
+        229,
+        70,
+        201,
+        64,
+        57,
+        180,
+        164
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "league",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  101,
+                  97,
+                  103,
+                  117,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "creator"
+              },
+              {
+                "kind": "arg",
+                "path": "league_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "league_id",
+          "type": "u64"
+        },
+        {
+          "name": "n_rounds",
+          "type": "u8"
+        },
+        {
+          "name": "min_secs",
+          "type": "u32"
+        },
+        {
+          "name": "max_secs",
+          "type": "u32"
+        },
+        {
+          "name": "max_players",
+          "type": "u8"
+        },
+        {
+          "name": "feed_id",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "delegate_entry",
+      "docs": [
+        "Delegate the caller's entry to the TEE validator so the position stays private."
+      ],
+      "discriminator": [
+        14,
+        244,
+        184,
+        129,
+        178,
+        22,
+        198,
+        94
+      ],
+      "accounts": [
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "league"
+        },
+        {
+          "name": "buffer_entry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "entry"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                76,
+                119,
+                216,
+                248,
+                153,
+                60,
+                193,
+                156,
+                51,
+                220,
+                163,
+                153,
+                73,
+                67,
+                149,
+                80,
+                61,
+                193,
+                90,
+                201,
+                249,
+                146,
+                250,
+                50,
+                110,
+                228,
+                210,
+                149,
+                69,
+                82,
+                195,
+                104
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_entry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "entry"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_entry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "entry"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "entry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  110,
+                  116,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league"
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
+          "name": "validator",
+          "address": "MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo"
+        },
+        {
+          "name": "owner_program",
+          "address": "69VymhYdXWsBVy9h5D1xdM6MU7DbBXF7rQHvGoUcW6K9"
+        },
+        {
+          "name": "delegation_program",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "delegate_league",
+      "docs": [
+        "Delegate the league to the TEE validator. Joining ends here."
+      ],
+      "discriminator": [
+        202,
+        150,
+        201,
+        4,
+        92,
+        45,
+        81,
+        241
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "buffer_league",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                76,
+                119,
+                216,
+                248,
+                153,
+                60,
+                193,
+                156,
+                51,
+                220,
+                163,
+                153,
+                73,
+                67,
+                149,
+                80,
+                61,
+                193,
+                90,
+                201,
+                249,
+                146,
+                250,
+                50,
+                110,
+                228,
+                210,
+                149,
+                69,
+                82,
+                195,
+                104
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_league",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_league",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "league",
+          "writable": true
+        },
+        {
+          "name": "validator",
+          "address": "MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo"
+        },
+        {
+          "name": "owner_program",
+          "address": "69VymhYdXWsBVy9h5D1xdM6MU7DbBXF7rQHvGoUcW6K9"
+        },
+        {
+          "name": "delegation_program",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "init_entry_permission",
+      "docs": [
+        "Make an entry readable only by its owner. Always private, owner is the only member."
+      ],
+      "discriminator": [
+        41,
+        109,
+        83,
+        104,
+        30,
+        32,
+        34,
+        191
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "entry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  110,
+                  116,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "entry.league",
+                "account": "Entry"
+              },
+              {
+                "kind": "account",
+                "path": "entry.player",
+                "account": "Entry"
+              }
+            ]
+          }
+        },
+        {
+          "name": "permission",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  109,
+                  105,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  58
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "entry"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                136,
+                161,
+                10,
+                196,
+                33,
+                152,
+                1,
+                214,
+                246,
+                106,
+                29,
+                60,
+                6,
+                152,
+                192,
+                102,
+                169,
+                175,
+                212,
+                217,
+                180,
+                252,
+                231,
+                71,
+                151,
+                141,
+                209,
+                5,
+                168,
+                212,
+                103,
+                82
+              ]
+            }
+          }
+        },
+        {
+          "name": "permission_program",
+          "address": "ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1"
+        },
+        {
+          "name": "ephemeral_vault",
+          "writable": true,
+          "address": "MagicVau1t999999999999999999999999999999999"
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "init_league_permission",
+      "docs": [
+        "Make the league unreadable to everyone (no members): nobody can read the hidden",
+        "close time from RPC while the round is live."
+      ],
+      "discriminator": [
+        129,
+        142,
+        235,
+        190,
+        192,
+        58,
+        106,
+        165
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "league",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  101,
+                  97,
+                  103,
+                  117,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league.creator",
+                "account": "League"
+              },
+              {
+                "kind": "account",
+                "path": "league.id",
+                "account": "League"
+              }
+            ]
+          }
+        },
+        {
+          "name": "permission",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  109,
+                  105,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  58
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                136,
+                161,
+                10,
+                196,
+                33,
+                152,
+                1,
+                214,
+                246,
+                106,
+                29,
+                60,
+                6,
+                152,
+                192,
+                102,
+                169,
+                175,
+                212,
+                217,
+                180,
+                252,
+                231,
+                71,
+                151,
+                141,
+                209,
+                5,
+                168,
+                212,
+                103,
+                82
+              ]
+            }
+          }
+        },
+        {
+          "name": "permission_program",
+          "address": "ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1"
+        },
+        {
+          "name": "ephemeral_vault",
+          "writable": true,
+          "address": "MagicVau1t999999999999999999999999999999999"
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "join_league",
+      "docs": [
+        "Join an open league. A second join by the same wallet fails because the entry PDA",
+        "already exists. The player pre-funds the rent of their entry's ephemeral permission."
+      ],
+      "discriminator": [
+        32,
+        4,
+        179,
+        25,
+        65,
+        34,
+        15,
+        127
+      ],
+      "accounts": [
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "league",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  101,
+                  97,
+                  103,
+                  117,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league.creator",
+                "account": "League"
+              },
+              {
+                "kind": "account",
+                "path": "league.id",
+                "account": "League"
+              }
+            ]
+          }
+        },
+        {
+          "name": "entry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  110,
+                  116,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league"
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "process_undelegation",
+      "discriminator": [
+        196,
+        28,
+        41,
+        206,
+        48,
+        37,
+        51,
+        167
+      ],
+      "accounts": [
+        {
+          "name": "base_account",
+          "writable": true
+        },
+        {
+          "name": "buffer",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  110,
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  101,
+                  45,
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "base_account"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
+            }
+          }
+        },
+        {
+          "name": "payer",
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "account_seeds",
+          "type": {
+            "vec": "bytes"
+          }
+        }
+      ]
+    },
+    {
+      "name": "schedule_settle",
+      "docs": [
+        "Creator schedules a polling crank that calls `settle_and_reveal` every 2 seconds, so",
+        "settlement needs no off-chain bot. The scheduled call is a no-op until the hidden close."
+      ],
+      "discriminator": [
+        122,
+        157,
+        112,
+        214,
+        90,
+        36,
+        240,
+        148
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "league",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  101,
+                  97,
+                  103,
+                  117,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league.creator",
+                "account": "League"
+              },
+              {
+                "kind": "account",
+                "path": "league.id",
+                "account": "League"
+              }
+            ]
+          }
+        },
+        {
+          "name": "price_feed"
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magic_context",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "set_position",
+      "docs": [
+        "Set or adjust the caller's paper position. Marks the previous position to the current",
+        "price first, then opens the new one at the current price."
+      ],
+      "discriminator": [
+        31,
+        61,
+        82,
+        30,
+        244,
+        227,
+        93,
+        86
+      ],
+      "accounts": [
+        {
+          "name": "player",
+          "signer": true
+        },
+        {
+          "name": "league",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  101,
+                  97,
+                  103,
+                  117,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league.creator",
+                "account": "League"
+              },
+              {
+                "kind": "account",
+                "path": "league.id",
+                "account": "League"
+              }
+            ]
+          }
+        },
+        {
+          "name": "entry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  110,
+                  116,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league"
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
+          "name": "permission",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  109,
+                  105,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  58
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "entry"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                136,
+                161,
+                10,
+                196,
+                33,
+                152,
+                1,
+                214,
+                246,
+                106,
+                29,
+                60,
+                6,
+                152,
+                192,
+                102,
+                169,
+                175,
+                212,
+                217,
+                180,
+                252,
+                231,
+                71,
+                151,
+                141,
+                209,
+                5,
+                168,
+                212,
+                103,
+                82
+              ]
+            }
+          }
+        },
+        {
+          "name": "price_feed"
+        }
+      ],
+      "args": [
+        {
+          "name": "side",
+          "type": "i8"
+        },
+        {
+          "name": "leverage",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "settle_and_reveal",
+      "docs": [
+        "Permissionless and idempotent: callable by anyone, by a crank, or by a player's browser.",
+        "",
+        "* before the hidden close, or once the round is no longer live: does nothing (Ok);",
+        "* inside the settlement window: marks every entry to the settlement price, updates",
+        "ratings and reveals by committing (the last round also undelegates everything);",
+        "* after the window: the round is voided (no scores) so a late or missing trigger can",
+        "never strand the league. This path does not read the price feed, so a broken feed",
+        "cannot deadlock it either."
+      ],
+      "discriminator": [
+        54,
+        227,
+        210,
+        221,
+        41,
+        217,
+        183,
+        179
+      ],
+      "accounts": [
+        {
+          "name": "league",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  101,
+                  97,
+                  103,
+                  117,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league.creator",
+                "account": "League"
+              },
+              {
+                "kind": "account",
+                "path": "league.id",
+                "account": "League"
+              }
+            ]
+          }
+        },
+        {
+          "name": "price_feed"
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magic_context",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "start_round",
+      "docs": [
+        "Creator starts a round: requests VRF randomness. The callback picks the hidden close."
+      ],
+      "discriminator": [
+        144,
+        144,
+        43,
+        7,
+        193,
+        42,
+        217,
+        215
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "league",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  101,
+                  97,
+                  103,
+                  117,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league.creator",
+                "account": "League"
+              },
+              {
+                "kind": "account",
+                "path": "league.id",
+                "account": "League"
+              }
+            ]
+          }
+        },
+        {
+          "name": "oracle_queue",
+          "writable": true,
+          "address": "5hBR571xnXppuCPveTrctfTU7tJLSN94nq7kv7FRK5Tc"
+        },
+        {
+          "name": "program_identity",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  100,
+                  101,
+                  110,
+                  116,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "vrf_program",
+          "address": "Vrf1RNUjXmQGjmQrQLvJHs9SNkvDJEsRVFPkfSQUwGz"
+        },
+        {
+          "name": "slot_hashes",
+          "address": "SysvarS1otHashes111111111111111111111111111"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Entry",
+      "discriminator": [
+        63,
+        18,
+        152,
+        113,
+        215,
+        246,
+        221,
+        250
+      ]
+    },
+    {
+      "name": "League",
+      "discriminator": [
+        65,
+        23,
+        216,
+        206,
+        217,
+        174,
+        87,
+        182
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidParams",
+      "msg": "invalid league parameters"
+    },
+    {
+      "code": 6001,
+      "name": "WrongStatus",
+      "msg": "league is not in the required state"
+    },
+    {
+      "code": 6002,
+      "name": "LeagueFull",
+      "msg": "league is full"
+    },
+    {
+      "code": 6003,
+      "name": "NotCreator",
+      "msg": "only the league creator can do this"
+    },
+    {
+      "code": 6004,
+      "name": "WrongValidator",
+      "msg": "validator must be the TEE validator"
+    },
+    {
+      "code": 6005,
+      "name": "PermissionMissing",
+      "msg": "entry permission is not initialised"
+    },
+    {
+      "code": 6006,
+      "name": "WrongFeed",
+      "msg": "price feed account is not the pinned feed"
+    },
+    {
+      "code": 6007,
+      "name": "StalePrice",
+      "msg": "price is stale"
+    },
+    {
+      "code": 6008,
+      "name": "InvalidPrice",
+      "msg": "price is not valid"
+    },
+    {
+      "code": 6009,
+      "name": "RoundClosed",
+      "msg": "round is closed"
+    },
+    {
+      "code": 6010,
+      "name": "RoundOpen",
+      "msg": "round has not closed yet"
+    },
+    {
+      "code": 6011,
+      "name": "OutsideSettleWindow",
+      "msg": "settlement price is outside the settlement window"
+    },
+    {
+      "code": 6012,
+      "name": "WindowNotExpired",
+      "msg": "settlement window has not expired"
+    },
+    {
+      "code": 6013,
+      "name": "InvalidPosition",
+      "msg": "invalid position"
+    },
+    {
+      "code": 6014,
+      "name": "BadEntries",
+      "msg": "wrong set of entries supplied"
+    },
+    {
+      "code": 6015,
+      "name": "Overflow",
+      "msg": "arithmetic overflow"
+    }
+  ],
+  "types": [
+    {
+      "name": "Entry",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "league",
+            "type": "pubkey"
+          },
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "round",
+            "docs": [
+              "Round this position belongs to; a mismatch means the position is stale and is reset."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "side",
+            "docs": [
+              "-1 short, 0 flat, 1 long."
+            ],
+            "type": "i8"
+          },
+          {
+            "name": "leverage",
+            "type": "u8"
+          },
+          {
+            "name": "entry_price",
+            "type": "i64"
+          },
+          {
+            "name": "ret_bps",
+            "docs": [
+              "Realised return this round in basis points (marked at each adjustment)."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "rounds_scored",
+            "type": "u8"
+          },
+          {
+            "name": "sum_ret_bps",
+            "type": "i64"
+          },
+          {
+            "name": "sum_sq_ret_bps",
+            "type": "i64"
+          },
+          {
+            "name": "last_ret_bps",
+            "type": "i64"
+          },
+          {
+            "name": "rating",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "League",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "id",
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "type": "u8"
+          },
+          {
+            "name": "n_rounds",
+            "type": "u8"
+          },
+          {
+            "name": "round",
+            "docs": [
+              "Index of the current / next round."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "player_count",
+            "type": "u8"
+          },
+          {
+            "name": "max_players",
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "min_secs",
+            "type": "u32"
+          },
+          {
+            "name": "max_secs",
+            "type": "u32"
+          },
+          {
+            "name": "feed",
+            "docs": [
+              "Pinned price feed account (MagicBlock pricing oracle PDA)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "close_at",
+            "docs": [
+              "Hidden until settlement: unix time the round closes (set by the VRF callback)."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "round_started_at",
+            "type": "i64"
+          },
+          {
+            "name": "randomness",
+            "docs": [
+              "Latest VRF output, kept so a settlement can be audited against the VRF proof."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "settle_price",
+            "docs": [
+              "Price used to settle the most recent round, and its publish time."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "settle_time",
+            "type": "i64"
+          },
+          {
+            "name": "winner",
+            "docs": [
+              "Set when the league finishes: highest rating (ties: lowest key)."
+            ],
+            "type": "pubkey"
+          }
+        ]
+      }
+    }
+  ]
+}

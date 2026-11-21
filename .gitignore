@@ -35,3 +35,6 @@ test-ledger/
 *.njsproj
 *.sln
 *.sw?
+
+# local end-to-end run state (wallet addresses, signatures)
+.e2e/
