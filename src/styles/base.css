@@ -455,3 +455,28 @@ svg { max-width: 100%; }
 .icon { width: 20px; height: 20px; flex: none; display: inline-block; vertical-align: middle; }
 
 .form { margin-top: 1rem; }
+
+/* ---------- address: first 4 + … + last 4, mono, with a copy button ---------- */
+.addr { display: inline-flex; align-items: center; gap: 0.2rem; white-space: nowrap; }
+.addr a { text-decoration: none; }
+.addr a:hover .mono { text-decoration: underline; }
+.addr__copy {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  flex: none;
+}
+.addr__copy:hover { border-color: var(--ink); color: var(--ink); background: var(--card); }
+/* the visible button is small; the touch area is not */
+.addr__copy::after { content: ''; position: absolute; inset: -10px; }
+
+.dtable tr.is-focus td { background: rgba(15, 118, 110, 0.14); }
+.dtable tr.is-focus { outline: 2px solid var(--teal); outline-offset: -2px; }

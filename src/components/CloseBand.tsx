@@ -1,4 +1,5 @@
 import type { LeagueView } from '../lib/chain'
+import { fmtUtc, lastRoundScored } from '../lib/format'
 import { mmss, useNow } from '../lib/hooks'
 
 /**
@@ -34,10 +35,23 @@ export default function CloseBand({ league }: { league: LeagueView }) {
     )
   }
   if (status !== 2) {
-    const label = status === 0 ? 'Not started' : status === 3 ? 'Round settled' : status === 6 ? 'Revealing' : 'League finished'
+    if (status === 3 || status === 4 || status === 6) {
+      // Settled: show when. A voided round has no settlement time, so say so instead of a stale one.
+      const scored = lastRoundScored(league)
+      const label = status === 4 ? 'League finished' : status === 6 ? 'Final round settled, revealing' : 'Round settled'
+      return (
+        <div className="stack">
+          <span className="caption">{label}</span>
+          <div className="clockbig mono clockbig--settled">{scored ? fmtUtc(league.settleTime).split(', ')[1] : 'voided'}</div>
+          <p className="muted small">
+            {scored ? `Settled ${fmtUtc(league.settleTime)}.` : 'Nobody settled inside the window, so this round scored nobody.'}
+          </p>
+        </div>
+      )
+    }
     return (
       <div className="stack">
-        <span className="caption">{label}</span>
+        <span className="caption">Not started</span>
         <div className="clockbig mono">--:--</div>
       </div>
     )

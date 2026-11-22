@@ -5,17 +5,21 @@ import {
   commitNonce, finalizeWithoutVrf, finishLeague, helperConnection, helperKeypair, lockIn, revealEntries, sealEntry, setPosition, settle,
 } from '../lib/actions'
 import {
-  baseConnection, entryPda, fetchEntries, fetchQuote, permissionPda, toEntry,
+  baseConnection, entryPda, fetchCards, fetchEntries, fetchLeague, fetchQuote, permissionPda, toEntry,
 } from '../lib/chain'
 import type { EntryView } from '../lib/chain'
 import { STATUS_LABEL } from '../lib/config'
-import { short, useLeague, useNow, usePoll } from '../lib/hooks'
+import { leagueName } from '../lib/format'
+import { useLeague, useNow, usePoll } from '../lib/hooks'
 import { explain } from '../lib/errors'
 import { teeSession } from '../lib/session'
 import { useSigner } from '../lib/wallet'
+import Addr from '../components/Addr'
 import CloseBand from '../components/CloseBand'
 import DeskShell from '../components/DeskShell'
+import ResultCard from '../components/ResultCard'
 import SealStamp from '../components/SealStamp'
+import SettleBanner from '../components/SettleBanner'
 import Seal from '../components/Seal'
 import Shroud from '../components/Shroud'
 import Skeleton from '../components/Skeleton'
@@ -55,6 +59,13 @@ export default function Desk() {
     [signer?.publicKey.toBase58(), key?.toBase58()],
   )
   const players = usePoll(() => (key ? fetchEntries(key) : Promise.resolve([] as EntryView[])), 10_000, [key?.toBase58()])
+
+  // final scores, for the result card once the league is Revealing or Finished
+  const cards = usePoll(
+    () => (key && (league?.status === 4 || league?.status === 6) ? fetchCards(key) : Promise.resolve(null)),
+    10_000,
+    [key?.toBase58(), league?.status],
+  )
 
   // my live entry, readable only by me: needs the enclave's token, so it waits for an explicit unlock
   const mine = usePoll(
@@ -112,22 +123,35 @@ export default function Desk() {
     }
   }
 
-  // Anyone can lock in, finalise and settle. A throwaway key does it without wallet pop-ups.
+  // Anyone can lock in, finalise and settle. A throwaway key does it without wallet pop-ups. While a
+  // settlement window can be open it polls every second (and re-reads the league first); otherwise
+  // every three.
   const inflight = useRef(false)
+  const leagueRef = useRef(league)
   useEffect(() => {
-    if (!help || !league || !key || !league.delegated) return
+    leagueRef.current = league
+  })
+  const delegatedLive = !!league?.delegated
+  useEffect(() => {
+    if (!help || !key || !delegatedLive) return
+    let tick = 0
     const id = setInterval(async () => {
+      tick += 1
       if (inflight.current) return
+      let l = leagueRef.current
+      if (!l) return
       const t = Date.now() / 1000
-      const l = league
-      const need =
-        (l.status === 5 && l.nonceCount >= 2 && (l.nonceCount === l.playerCount || t >= l.nonceDeadline)) ||
-        (l.status === 1 && t >= l.vrfDeadline) ||
-        (l.status === 2 && t >= l.roundStartedAt + l.minSecs) ||
-        l.status === 6
-      if (!need) return
+      const windowOpen = (l.status === 2 && t >= l.roundStartedAt + l.minSecs) || l.status === 6
+      if (!windowOpen && tick % 3 !== 0) return
       inflight.current = true
       try {
+        if (windowOpen) l = (await fetchLeague(key).catch(() => null)) ?? l
+        const need =
+          (l.status === 5 && l.nonceCount >= 2 && (l.nonceCount === l.playerCount || t >= l.nonceDeadline)) ||
+          (l.status === 1 && t >= l.vrfDeadline) ||
+          (l.status === 2 && t >= l.roundStartedAt + l.minSecs) ||
+          l.status === 6
+        if (!need) return
         const conn = await helperConnection()
         const kp = helperKeypair()
         if (l.status === 5) await lockIn(kp, conn, key)
@@ -138,13 +162,14 @@ export default function Desk() {
         } else await settle(kp, conn, key, l.feed)
         setHelpNote(null)
       } catch (e) {
-        { const x = explain(e); setHelpNote(`Automatic helper: ${x.text}${x.retry ? ' It will try again by itself.' : ''}`) }
+        const x = explain(e)
+        setHelpNote(`Automatic helper: ${x.text}${x.retry ? ' It will try again by itself.' : ''}`)
       } finally {
         inflight.current = false
       }
-    }, 3000)
+    }, 1000)
     return () => clearInterval(id)
-  }, [help, league, key])
+  }, [help, key, delegatedLive])
 
   if (!key) return <section className="page"><p className="notice notice--bad">That league address is not valid.</p></section>
   if (error) return <section className="page"><p className="notice notice--bad">{error}</p></section>
@@ -154,6 +179,7 @@ export default function Desk() {
   const sealed = mine.data?.sealed ?? false
   const nonceDone = !!e && e.nonceEpoch === league.epoch && league.epoch > 0
   const live = league.status === 2
+  const wrapped = league.status === 4 || league.status === 6 // Finished or Revealing: the play steps no longer apply
   const over = league.status === 3 || league.status === 4 || league.status === 6
   // A scored round sets settleTime at or after the round start; a voided round leaves it behind.
   const lastVoided = over && league.round >= 1 && league.settleTime < league.roundStartedAt
@@ -170,14 +196,16 @@ export default function Desk() {
       <section className="page">
         <header className="page__head">
           <span className="caption">Sealed desk</span>
-          <h1>{STATUS_LABEL[league.status]}</h1>
+          <h1>{leagueName(league.key.toBase58())}</h1>
           <div className="row">
-            <span className="mono small break">{league.key.toBase58()}</span>
+            <Addr value={league.key.toBase58()} />
+            <span className={`tag${live ? ' tag--live' : ''}`}>{STATUS_LABEL[league.status]}</span>
             <span className="tag">round {Math.min(league.round + 1, league.nRounds)} of {league.nRounds}</span>
-            {live && <span className="tag tag--live">live</span>}
             {over && <SealStamp voided={lastVoided} label={lastVoided ? 'Voided' : league.status === 4 ? 'Finished' : league.status === 6 ? 'Revealing' : 'Settled'} />}
           </div>
         </header>
+
+        <SettleBanner league={league} helperOn={help} />
 
         <div className="desk">
           <div className="desk__col">
@@ -194,7 +222,7 @@ export default function Desk() {
               <ul className="roster">
                 {players.data?.map((p: EntryView) => (
                   <li key={p.key.toBase58()}>
-                    <span className="mono small">{short(p.player.toBase58(), 4, 4)}</span>
+                    <Addr value={p.player.toBase58()} />
                     {signer && p.player.equals(signer.publicKey) && <span className="tag">you</span>}
                     <span className="roster__pos">{live || league.status === 5 ? <Seal width="7ch" /> : <span className="muted">-</span>}</span>
                   </li>
@@ -205,6 +233,9 @@ export default function Desk() {
           </div>
 
           <div className="desk__col">
+            {wrapped ? (
+              <ResultCard league={league} cards={cards.data} entries={players.data ?? []} me={signer?.publicKey ?? null} />
+            ) : (
             <ol className="steps">
               <li className={`step ${signer ? 'step--done' : step === 1 ? 'step--active' : ''}`}>
                 <span className="step__n">{signer ? '✓' : '1'}</span>
@@ -214,7 +245,7 @@ export default function Desk() {
                   {signer && joined.data === false && (
                     <p className="notice notice--warn">This wallet has not joined this league. <Link to="/">Back to the lobby</Link></p>
                   )}
-                  {signer && joined.data !== false && <p className="small">Connected as <span className="mono">{short(signer.publicKey.toBase58(), 5, 5)}</span>.</p>}
+                  {signer && joined.data !== false && <p className="small">Connected as <Addr value={signer.publicKey.toBase58()} />.</p>}
                 </div>
               </li>
 
@@ -328,6 +359,7 @@ export default function Desk() {
                 </div>
               </li>
             </ol>
+            )}
 
             <div className="card">
               <div className="card__head"><h3>Settlement window</h3><span className={`tag${live ? ' tag--warn' : ''}`}>{live ? 'window open' : 'idle'}</span></div>
@@ -335,10 +367,12 @@ export default function Desk() {
                 Anyone can settle once the hidden close has passed, with a throwaway key, so no wallet pop-up and no server. It needs at least
                 one open desk within 60 seconds of the close, otherwise the round is voided and nobody is scored.
               </p>
+              {league.status !== 4 && (
               <label className="check">
                 <input type="checkbox" checked={help} onChange={(ev) => setHelp(ev.target.checked)} />
                 Help lock in, settle and reveal from this tab
               </label>
+              )}
               {helpNote && <p className="notice notice--warn small">{helpNote}</p>}
               {(league.status === 5 || league.status === 1 || league.status === 2 || league.status === 6) && (
                 <div className="stack">

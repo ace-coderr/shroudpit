@@ -537,3 +537,42 @@
 
 .trophy.enter { animation-name: rise; }
 .trophy.enter .trophy__disc { animation: stamp 700ms var(--ease) both; animation-delay: calc(var(--i, 0) * 120ms + 150ms); }
+
+/* ---------- settlement banner and result card ---------- */
+.banner {
+  display: grid;
+  gap: 0.2rem;
+  margin: 0 0 1.25rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--ink);
+  border-left: 6px solid var(--ink);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+.banner--hot { border-left-color: var(--amber); }
+.banner--hot strong { color: var(--amber); }
+
+.result__hero {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 0.4rem 0 1rem;
+}
+.result__big { font-size: 1.5rem; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+.result__sub { margin: 0.75rem 0 0.4rem; font-size: 0.95rem; }
+.result__rounds { list-style: none; margin: 0 0 0.5rem; padding: 0; display: grid; gap: 0.35rem; }
+.result__rounds li { display: flex; justify-content: space-between; gap: 1rem; border-bottom: 1px solid rgba(14, 14, 14, 0.15); padding-bottom: 0.3rem; }
+.result__links { margin-top: 1rem; }
+@media (max-width: 560px) {
+  .result__hero { grid-template-columns: 1fr 1fr; }
+  .result__hero > :last-child { grid-column: 1 / -1; }
+}
+
+/* address copy button on the black sidebar and footer */
+.sidebar .addr__copy { color: #b9b29e; }
+.sidebar .addr__copy:hover { color: var(--paper); border-color: var(--paper); background: #262626; }
+.sidebar .addr a { color: var(--paper); }
+
+/* long badges wrap inside the trophy card instead of spilling out of it */
+.trophy > .stack { min-width: 0; }
+.trophy .status { max-width: 100%; white-space: normal; }

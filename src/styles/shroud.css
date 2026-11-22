@@ -149,3 +149,5 @@
 
 /* rotated stamp needs room so it stays inside the page gutter */
 .stamp { margin: 0.4rem 0.6rem; }
+
+.clockbig--settled { font-size: clamp(1.5rem, 6.5vw, 2.3rem); }
