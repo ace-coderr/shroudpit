@@ -2,23 +2,16 @@ export default function Footer() {
   return (
     <footer className="footer">
       <div className="footer__inner">
-        <div className="footer__brand">
-          <span className="footer__name">Shroudpit</span>
-          <p>Private trading leagues with a verifiable skill record.</p>
+        <span className="footer__name">Shroudpit</span>
+        <nav className="footer__links" aria-label="Project links">
+          <a href="https://github.com/ace-coderr/shroudpit" target="_blank" rel="noreferrer">GitHub</a>
+          <a href="https://github.com/ace-coderr/shroudpit/blob/main/docs/audit-checklist.md" target="_blank" rel="noreferrer">Audit</a>
+        </nav>
+        <div className="footer__net">
+          <span className="devnet">devnet</span>
+          <span>Sample leagues run on Solana devnet.</span>
         </div>
-        <ul className="footer__meta">
-          <li>Solana devnet</li>
-          <li>Paper positions on live prices</li>
-          <li>
-            <a href="https://github.com/ace-coderr/shroudpit" target="_blank" rel="noreferrer">
-              Source
-            </a>
-          </li>
-        </ul>
       </div>
-      <p className="footer__legal">
-        Paper trading only. No real funds are staked and nothing here is financial advice.
-      </p>
     </footer>
   )
 }

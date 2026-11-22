@@ -136,3 +136,13 @@
 }
 
 .stamp--voided { border-color: var(--ink); color: var(--ink); background-image: repeating-linear-gradient(135deg, transparent 0 5px, rgba(14,14,14,0.2) 5px 6px); }
+
+/* bare redaction bar for hidden roster figures */
+.seal {
+  display: inline-block;
+  height: 1em;
+  vertical-align: -0.15em;
+  border-radius: 3px;
+  background: var(--ink);
+  background-image: repeating-linear-gradient(90deg, transparent 0 7px, rgba(241, 233, 216, 0.14) 7px 8px);
+}

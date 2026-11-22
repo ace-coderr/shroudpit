@@ -2,11 +2,10 @@ import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import WalletButton from './WalletButton'
 
-// Links are added as each module ships; nothing here points at a page that does not exist.
 const links = [
-  { to: '/', label: 'Overview', end: true },
-  { to: '/lobby', label: 'Lobby', end: false },
-  { to: '/create', label: 'Create', end: false },
+  { to: '/', label: 'Lobby', end: true },
+  { to: '/desk', label: 'Desk', end: false },
+  { to: '/standings', label: 'Standings', end: false },
   { to: '/record', label: 'Record', end: false },
 ]
 
@@ -15,13 +14,13 @@ export default function Navbar() {
   return (
     <header className="nav">
       <div className="nav__inner">
-        <NavLink to="/" className="brand" onClick={() => setOpen(false)}>
-          <span className="brand__mark" aria-hidden="true">
+        <NavLink to="/" className="wordmark" onClick={() => setOpen(false)}>
+          <span className="wordmark__mark" aria-hidden="true">
             <i />
             <i />
             <i />
           </span>
-          <span className="brand__name">Shroudpit</span>
+          Shroudpit
         </NavLink>
         <button
           className={`nav__toggle${open ? ' is-open' : ''}`}
@@ -45,9 +44,7 @@ export default function Navbar() {
               {l.label}
             </NavLink>
           ))}
-          <div className="nav__wallet">
-            <WalletButton />
-          </div>
+          <WalletButton />
         </nav>
       </div>
     </header>

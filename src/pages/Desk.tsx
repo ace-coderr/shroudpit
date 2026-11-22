@@ -12,9 +12,12 @@ import { STATUS_LABEL } from '../lib/config'
 import { short, useLeague, useNow, usePoll } from '../lib/hooks'
 import { TxError, teeSession } from '../lib/session'
 import { useSigner } from '../lib/wallet'
-import Redacted from '../components/Redacted'
-import RoundClock from '../components/RoundClock'
+import CloseBand from '../components/CloseBand'
+import DeskShell from '../components/DeskShell'
+import SealStamp from '../components/SealStamp'
 import Seal from '../components/Seal'
+import Shroud from '../components/Shroud'
+import Skeleton from '../components/Skeleton'
 import { Connection } from '@solana/web3.js'
 
 const ER_PUBLIC = 'https://devnet-eu.magicblock.app'
@@ -57,6 +60,7 @@ export default function Desk() {
   const [showMine, setShowMine] = useState(false)
   const [help, setHelp] = useState(true)
   const [helpNote, setHelpNote] = useState<string | null>(null)
+  const lastRun = useRef<{ name: string; fn: () => Promise<string> } | null>(null)
 
   // joined? (entry PDA exists on the base layer)
   const joined = usePoll(
@@ -108,6 +112,7 @@ export default function Desk() {
   }
 
   async function act(name: string, fn: () => Promise<string>) {
+    lastRun.current = { name, fn }
     setBusy(name)
     setMsg(null)
     try {
@@ -157,189 +162,227 @@ export default function Desk() {
 
   if (!key) return <section className="page"><p className="notice notice--bad">That league address is not valid.</p></section>
   if (error) return <section className="page"><p className="notice notice--bad">{error}</p></section>
-  if (!league) return <section className="page"><p className="muted">Reading the ledger…</p></section>
+  if (!league) return <section className="page"><Skeleton count={2} height="10rem" /></section>
 
   const e = mine.data?.entry ?? null
   const sealed = mine.data?.sealed ?? false
   const nonceDone = !!e && e.nonceEpoch === league.epoch && league.epoch > 0
   const live = league.status === 2
+  const over = league.status === 3 || league.status === 4 || league.status === 6
   const unrealised =
     e && e.side !== 0 && price.data && e.entryPrice > 0
       ? Math.round((((price.data.price * 1e8 - e.entryPrice) / e.entryPrice) * 10_000 * e.side * e.leverage))
       : null
+  const joinedOk = !!signer && joined.data === true
+  const step = !signer ? 1 : !joinedOk ? 1 : !unlocked ? 2 : 3
+  const advanceLabel = league.status === 5 ? 'Lock in now' : league.status === 1 ? 'Finalise now' : league.status === 6 ? 'Reveal now' : 'Settle now'
 
   return (
-    <section className="page">
-      <header className="page__head">
-        <p className="eyebrow">Sealed Desk</p>
-        <h1 className="page__title">
-          {STATUS_LABEL[league.status]} · round {Math.min(league.round + 1, league.nRounds)} of {league.nRounds}
-        </h1>
-        <p className="page__lede mono small">{league.key.toBase58()}</p>
-        <nav className="subnav">
-          <Link to={`/standings/${key.toBase58()}`}>Standings</Link>
-          <Link to={`/audit/${key.toBase58()}`}>Reveal &amp; audit</Link>
-        </nav>
-      </header>
-
-      {!signer && <p className="notice">Connect a devnet wallet to use your desk.</p>}
-      {signer && joined.data === false && <p className="notice">This wallet has not joined this league. <Link to="/lobby">Back to the lobby</Link></p>}
-
-      <div className="desk">
-        <div className="desk__col">
-          <RoundClock league={league} />
-          <div className="panel">
-            <h3>Price</h3>
-            <p className="price mono">
-              {price.data ? `$${price.data.price.toFixed(4)}` : '…'}
-            </p>
-            <p className="muted small">
-              Live oracle price, updated every second inside the rollup
-              {price.data ? ` · ${Math.max(0, Math.round(now - price.data.publishTime))}s old` : ''}.
-            </p>
+    <DeskShell league={league}>
+      <section className="page">
+        <header className="page__head">
+          <span className="caption">Sealed desk</span>
+          <h1>{STATUS_LABEL[league.status]}</h1>
+          <div className="row">
+            <span className="mono small break">{league.key.toBase58()}</span>
+            <span className="tag">round {Math.min(league.round + 1, league.nRounds)} of {league.nRounds}</span>
+            {live && <span className="tag tag--live">live</span>}
+            {over && <SealStamp label={league.status === 4 ? 'Finished' : league.status === 6 ? 'Revealing' : 'Settled'} />}
           </div>
-          <div className="panel">
-            <h3>Players</h3>
-            <ul className="roster">
-              {players.data?.map((p: EntryView) => (
-                <li key={p.key.toBase58()}>
-                  <span className="mono">{short(p.player.toBase58(), 4, 4)}</span>
-                  {signer && p.player.equals(signer.publicKey) && <em> you</em>}
-                  <span className="roster__pos">{live || league.status === 5 ? <Seal width="7ch" /> : <span className="muted">—</span>}</span>
-                </li>
-              ))}
-            </ul>
-            <p className="muted small">Other players' positions stay sealed until the round closes.</p>
-          </div>
-        </div>
+        </header>
 
-        <div className="desk__col">
-          <div className="panel">
-            <h3>Your desk</h3>
-            {signer && joined.data && !unlocked && (
-              <>
-                <p className="muted">
-                  Your position lives in a Private Ephemeral Rollup and only you can read it. Unlock it by
-                  signing a message with your wallet; no funds move.
-                </p>
-                <button className="btn btn--ink" disabled={busy === 'unlock'} onClick={() => void unlock()}>
-                  {busy === 'unlock' ? 'Unlocking…' : 'Unlock my desk'}
-                </button>
-              </>
-            )}
-            {unlocked && (
-              <>
-                <ol className="steps2">
-                  <li className="done">Joined</li>
-                  <li className={sealed ? 'done' : ''}>Entry sealed to my wallet</li>
-                  <li className={nonceDone ? 'done' : ''}>Nonce sealed for this round</li>
-                  <li className={live ? 'done' : ''}>Round live</li>
-                </ol>
-                {attested !== null && (
-                  <p className={`small ${attested ? 'ok' : 'warn'}`}>
-                    {attested
-                      ? 'Enclave attestation verified in this browser.'
-                      : 'Enclave attestation could not be checked from this browser (it needs a third-party certificate service). The connection is still authenticated.'}
-                  </p>
-                )}
-
-                {!sealed && (
-                  <button className="btn btn--ink" disabled={!!busy} onClick={() => void act('Seal entry', () => sealEntry(signer!, key))}>
-                    Seal my entry
-                  </button>
-                )}
-                {sealed && league.status === 5 && !nonceDone && (
-                  <button className="btn btn--ink" disabled={!!busy} onClick={() => void act('Seal nonce', () => commitNonce(signer!, key))}>
-                    Seal my nonce
-                  </button>
-                )}
-                {sealed && league.status === 5 && nonceDone && <p className="ok">Nonce sealed. Waiting for the other players ({league.nonceCount}/{league.playerCount}).</p>}
-
-                {live && sealed && (
-                  <div className="ticket">
-                    <div className="seg" role="group" aria-label="Side">
-                      {([1, -1, 0] as const).map((s) => (
-                        <button key={s} className={side === s ? 'on' : ''} onClick={() => setSide(s)}>
-                          {SIDE[String(s)]}
-                        </button>
-                      ))}
-                    </div>
-                    <label className="range">
-                      Leverage <b className="mono">{side === 0 ? '–' : `×${leverage}`}</b>
-                      <input type="range" min={1} max={5} value={leverage} disabled={side === 0} onChange={(ev) => setLeverage(Number(ev.target.value))} />
-                    </label>
-                    <button
-                      className="btn btn--ink"
-                      disabled={!!busy}
-                      onClick={() => void act('Place position', () => setPosition(signer!, key, league.feed, side, side === 0 ? 0 : leverage))}
-                    >
-                      {busy === 'Place position' ? 'Sealing…' : 'Place position'}
-                    </button>
-                  </div>
-                )}
-
-                {e && (
-                  <div className="mine">
-                    <h4>My sealed position</h4>
-                    <p className="mono big">
-                      <Redacted revealed={showMine}>
-                        {e.side === 0 ? 'Flat' : `${SIDE[String(e.side)]} ×${e.leverage} from $${(e.entryPrice / 1e8).toFixed(4)}`}
-                      </Redacted>
-                    </p>
-                    {unrealised !== null && live && (
-                      <p className="mono small">
-                        Marked now: <Redacted revealed={showMine}>{`${unrealised >= 0 ? '+' : ''}${(unrealised / 100).toFixed(2)}%`}</Redacted>
-                      </p>
-                    )}
-                    <button className="btn btn--text" onClick={() => setShowMine((v) => !v)}>
-                      {showMine ? 'Cover it' : 'Show it to me'}
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-            {msg && <p className={`notice${msg.ok ? '' : ' notice--bad'}`}>{msg.text}</p>}
-          </div>
-
-          <div className="panel">
-            <h3>Settlement</h3>
-            <p className="muted small">
-              Settlement is permissionless. It runs from any open desk using a throwaway key, so nobody has to
-              approve a wallet pop-up and nobody has to run a server. It does need at least one open desk (any player's) within 60 seconds of the close: if no client is open in that window the round is voided and nobody is scored.
-            </p>
-            <label className="check">
-              <input type="checkbox" checked={help} onChange={(ev) => setHelp(ev.target.checked)} />
-              Help lock in and settle from this tab
-            </label>
-            {helpNote && <p className="warn small">{helpNote}</p>}
-            {(league.status === 5 || league.status === 1 || league.status === 2 || league.status === 6) && (
-              <button
-                className="btn btn--line"
-                disabled={!!busy}
-                onClick={() =>
-                  void act('Advance the round', async () => {
-                    const conn = await helperConnection()
-                    const kp = helperKeypair()
-                    if (league.status === 5) return lockIn(kp, conn, key)
-                    if (league.status === 1) return finalizeWithoutVrf(kp, conn, key)
-                    if (league.status === 6) return league.revealedCount < league.playerCount ? revealEntries(kp, conn, key, league.revealedCount) : finishLeague(kp, conn, key)
-                    return settle(kp, conn, key, league.feed)
-                  })
-                }
-              >
-                Advance the round now
-              </button>
-            )}
-            {league.status === 3 || league.status === 4 ? (
-              <p className="ok">
-                {league.status === 4 ? 'The league has finished.' : 'The round settled.'}{' '}
-                <Link to={`/audit/${key.toBase58()}`}>Reveal &amp; audit</Link> ·{' '}
-                <Link to={`/standings/${key.toBase58()}`}>Standings</Link>
+        <div className="desk">
+          <div className="desk__col">
+            <div className="card"><CloseBand league={league} /></div>
+            <div className="card">
+              <div className="card__head"><h3>Price</h3><span className="tag">live oracle</span></div>
+              <p className="price mono">{price.data ? `$${price.data.price.toFixed(4)}` : '…'}</p>
+              <p className="muted small">
+                Updated every second inside the rollup{price.data ? `, ${Math.max(0, Math.round(now - price.data.publishTime))}s old` : ''}.
               </p>
-            ) : null}
+            </div>
+            <div className="card">
+              <div className="card__head"><h3>Players</h3></div>
+              <ul className="roster">
+                {players.data?.map((p: EntryView) => (
+                  <li key={p.key.toBase58()}>
+                    <span className="mono small">{short(p.player.toBase58(), 4, 4)}</span>
+                    {signer && p.player.equals(signer.publicKey) && <span className="tag">you</span>}
+                    <span className="roster__pos">{live || league.status === 5 ? <Seal width="7ch" /> : <span className="muted">-</span>}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="muted small">Other players' positions stay sealed until the final round.</p>
+            </div>
+          </div>
+
+          <div className="desk__col">
+            <ol className="steps">
+              <li className={`step ${signer ? 'step--done' : step === 1 ? 'step--active' : ''}`}>
+                <span className="step__n">{signer ? '✓' : '1'}</span>
+                <div className="step__body">
+                  <h3>Connect</h3>
+                  {!signer && <p className="muted small">Connect a devnet wallet with the button at the top of the page.</p>}
+                  {signer && joined.data === false && (
+                    <p className="notice notice--warn">This wallet has not joined this league. <Link to="/">Back to the lobby</Link></p>
+                  )}
+                  {signer && joined.data !== false && <p className="small">Connected as <span className="mono">{short(signer.publicKey.toBase58(), 5, 5)}</span>.</p>}
+                </div>
+              </li>
+
+              <li className={`step ${unlocked ? 'step--done' : step === 2 ? 'step--active' : 'step--idle'}`}>
+                <span className="step__n">{unlocked ? '✓' : '2'}</span>
+                <div className="step__body">
+                  <h3>Unlock Private ER</h3>
+                  {!unlocked && (
+                    <>
+                      <p className="muted small">
+                        Your position lives in a private rollup only you can read. Sign a message to unlock it; no funds move.
+                      </p>
+                      <button className="btn btn--primary" disabled={!joinedOk || busy === 'unlock'} onClick={() => void unlock()}>
+                        {busy === 'unlock' ? 'Waiting for signature…' : 'Unlock my desk'}
+                      </button>
+                    </>
+                  )}
+                  {unlocked && attested !== null && (
+                    <p className={`small ${attested ? '' : 'muted'}`}>
+                      {attested
+                        ? 'Enclave attestation verified in this browser.'
+                        : 'Enclave attestation could not be checked from this browser (it needs a third-party certificate service). The connection is still authenticated.'}
+                    </p>
+                  )}
+                  {unlocked && attested === null && <p className="small">Unlocked.</p>}
+                </div>
+              </li>
+
+              <li className={`step ${step === 3 ? 'step--active' : 'step--idle'}`}>
+                <span className="step__n">3</span>
+                <div className="step__body">
+                  <h3>Place position</h3>
+                  {!unlocked && <p className="muted small">Unlock the desk first.</p>}
+                  {unlocked && (
+                    <>
+                      {!sealed && (
+                        <>
+                          <p className="muted small">Make your entry private to your wallet before anything else.</p>
+                          <button className="btn btn--primary" disabled={!!busy} onClick={() => void act('Seal entry', () => sealEntry(signer!, key))}>
+                            {busy === 'Seal entry' ? 'Waiting for signature…' : 'Seal my entry'}
+                          </button>
+                        </>
+                      )}
+                      {sealed && league.status === 5 && !nonceDone && (
+                        <>
+                          <p className="muted small">Seal a random nonce. It helps decide the hidden close time and stays secret until the league ends.</p>
+                          <button className="btn btn--primary" disabled={!!busy} onClick={() => void act('Seal nonce', () => commitNonce(signer!, key))}>
+                            {busy === 'Seal nonce' ? 'Waiting for signature…' : 'Seal my nonce'}
+                          </button>
+                        </>
+                      )}
+                      {sealed && league.status === 5 && nonceDone && (
+                        <p className="notice notice--ok">Nonce sealed. Waiting for the other players ({league.nonceCount}/{league.playerCount}).</p>
+                      )}
+                      {sealed && !live && league.status !== 5 && !over && <p className="muted small">Positions open when the round goes live.</p>}
+                      {live && sealed && (
+                        <div className="ticket">
+                          <div className="seg" role="group" aria-label="Side">
+                            {([1, -1, 0] as const).map((sd) => (
+                              <button key={sd} className={side === sd ? 'on' : ''} onClick={() => setSide(sd)}>
+                                {SIDE[String(sd)]}
+                              </button>
+                            ))}
+                          </div>
+                          <label className="range">
+                            <span>Leverage <b>{side === 0 ? '-' : `×${leverage}`}</b></span>
+                            <input type="range" min={1} max={5} value={leverage} disabled={side === 0} onChange={(ev) => setLeverage(Number(ev.target.value))} />
+                          </label>
+                          <button
+                            className="btn btn--primary"
+                            disabled={!!busy}
+                            onClick={() => void act('Place position', () => setPosition(signer!, key, league.feed, side, side === 0 ? 0 : leverage))}
+                          >
+                            {busy === 'Place position' ? 'Waiting for signature…' : 'Place position'}
+                          </button>
+                        </div>
+                      )}
+                      {sealed && e && (
+                        <div className="stack">
+                          <Shroud
+                            revealed={showMine}
+                            side={e.side}
+                            leverage={e.leverage}
+                            caption={showMine && e.entryPrice > 0 ? `from $${(e.entryPrice / 1e8).toFixed(4)}` : 'your position'}
+                          />
+                          {showMine && unrealised !== null && live && (
+                            <p className="mono small">Marked now: {unrealised >= 0 ? '+' : ''}{(unrealised / 100).toFixed(2)}%</p>
+                          )}
+                          <button className="btn btn--ghost btn--small" onClick={() => setShowMine((v) => !v)}>
+                            {showMine ? 'Cover it' : 'Lift the cloth (only you can see this)'}
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {msg && (
+                    <div className={`notice ${msg.ok ? 'notice--ok' : 'notice--bad'}`} role="status">
+                      <p>{msg.text}</p>
+                      {!msg.ok && (
+                        <button
+                          className="btn btn--small"
+                          style={{ marginTop: '0.5rem' }}
+                          disabled={!!busy}
+                          onClick={() => (lastRun.current ? void act(lastRun.current.name, lastRun.current.fn) : void unlock())}
+                        >
+                          Retry
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </li>
+            </ol>
+
+            <div className="card">
+              <div className="card__head"><h3>Settlement window</h3><span className={`tag${live ? ' tag--warn' : ''}`}>{live ? 'window open' : 'idle'}</span></div>
+              <p className="muted small">
+                Anyone can settle once the hidden close has passed, with a throwaway key, so no wallet pop-up and no server. It needs at least
+                one open desk within 60 seconds of the close, otherwise the round is voided and nobody is scored.
+              </p>
+              <label className="check">
+                <input type="checkbox" checked={help} onChange={(ev) => setHelp(ev.target.checked)} />
+                Help lock in, settle and reveal from this tab
+              </label>
+              {helpNote && <p className="notice notice--warn small">{helpNote}</p>}
+              {(league.status === 5 || league.status === 1 || league.status === 2 || league.status === 6) && (
+                <div className="stack">
+                  <button
+                    className="btn"
+                    disabled={!!busy}
+                    onClick={() =>
+                      void act('Advance the round', async () => {
+                        const conn = await helperConnection()
+                        const kp = helperKeypair()
+                        if (league.status === 5) return lockIn(kp, conn, key)
+                        if (league.status === 1) return finalizeWithoutVrf(kp, conn, key)
+                        if (league.status === 6) return league.revealedCount < league.playerCount ? revealEntries(kp, conn, key, league.revealedCount) : finishLeague(kp, conn, key)
+                        return settle(kp, conn, key, league.feed)
+                      })
+                    }
+                  >
+                    {advanceLabel}
+                  </button>
+                  <p className="muted small">Runs the next step now instead of waiting for a desk to do it.</p>
+                </div>
+              )}
+              {(league.status === 3 || league.status === 4) && (
+                <p className="small">
+                  {league.status === 4 ? 'The league has finished.' : 'The round settled.'}{' '}
+                  <Link to={`/audit/${key.toBase58()}`}>Reveal and audit</Link> · <Link to={`/standings/${key.toBase58()}`}>Standings</Link>
+                </p>
+              )}
+            </div>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </DeskShell>
   )
 }

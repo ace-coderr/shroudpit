@@ -530,3 +530,6 @@
 }
 
 .trophy__disc svg { width: 2rem; height: 2rem; }
+
+.trophy.enter { animation-name: rise; }
+.trophy.enter .trophy__disc { animation: stamp 700ms var(--ease) both; animation-delay: calc(var(--i, 0) * 120ms + 150ms); }
