@@ -5,7 +5,7 @@ import {
   commitNonce, finalizeWithoutVrf, finishLeague, helperConnection, helperKeypair, lockIn, revealEntries, sealEntry, setPosition, settle,
 } from '../lib/actions'
 import {
-  baseConnection, entryPda, fetchCards, fetchEntries, fetchLeague, fetchQuote, permissionPda, toEntry,
+  baseConnection, entryPda, fetchCards, fetchEntries, fetchLiveLeague, fetchQuote, permissionPda, toEntry,
 } from '../lib/chain'
 import type { EntryView } from '../lib/chain'
 import { STATUS_LABEL } from '../lib/config'
@@ -145,7 +145,7 @@ export default function Desk() {
       if (!windowOpen && tick % 3 !== 0) return
       inflight.current = true
       try {
-        if (windowOpen) l = (await fetchLeague(key).catch(() => null)) ?? l
+        if (windowOpen) l = (await fetchLiveLeague(key).catch(() => null)) ?? l
         const need =
           (l.status === 5 && l.nonceCount >= 2 && (l.nonceCount === l.playerCount || t >= l.nonceDeadline)) ||
           (l.status === 1 && t >= l.vrfDeadline) ||
@@ -172,7 +172,8 @@ export default function Desk() {
   }, [help, key, delegatedLive])
 
   if (!key) return <section className="page"><p className="notice notice--bad">That league address is not valid.</p></section>
-  if (error) return <section className="page"><p className="notice notice--bad">{error}</p></section>
+  // A failed poll must not blank a desk that has already loaded: only show the error when there is nothing to show.
+  if (error && !league) return <section className="page"><p className="notice notice--bad">{explain(error).text} This page keeps trying by itself.</p></section>
   if (!league) return <section className="page"><Skeleton count={2} height="10rem" /></section>
 
   const e = mine.data?.entry ?? null
@@ -205,6 +206,7 @@ export default function Desk() {
           </div>
         </header>
 
+        {error && <p className="notice notice--warn small" role="status">{explain(error).text} Showing the last data; this page keeps trying by itself.</p>}
         <SettleBanner league={league} helperOn={help} />
 
         <div className="desk">

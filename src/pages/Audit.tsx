@@ -7,6 +7,7 @@ import type { EntryView, LeagueView, SecretView } from '../lib/chain'
 import { CLOSE_MODE_LABEL, STATUS_LABEL, explorerAddress, explorerTx } from '../lib/config'
 import { fmtUtc, leagueName, rankCards } from '../lib/format'
 import { hex, short, useLeague, usePoll } from '../lib/hooks'
+import { explain } from '../lib/errors'
 import { labelTransactions } from '../lib/settlement'
 import Addr from '../components/Addr'
 import CopyField from '../components/CopyField'
@@ -126,7 +127,7 @@ export default function Audit() {
   }, [focus, cardCount])
 
   if (!key) return <section className="page"><p className="notice notice--bad">That league address is not valid.</p></section>
-  if (leagueError) return <section className="page"><p className="notice notice--bad">{leagueError}</p></section>
+  if (leagueError && !league) return <section className="page"><p className="notice notice--bad">{explain(leagueError).text} This page keeps trying by itself.</p></section>
   const revealed = finished && !!secret.data && secret.data.history[0].closeAt > 0
   const ranked = rankCards(cards.data ?? [], finished && league ? league.winner.toBase58() : undefined)
   const sortedEntries = [...(entries.data ?? [])].sort(keyOrder)

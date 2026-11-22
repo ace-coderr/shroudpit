@@ -84,7 +84,7 @@ export function explain(e: unknown): Explained {
   if (/reject|declin|denied|cancel/i.test(message)) {
     return { text: 'The signature was cancelled in your wallet. Nothing was sent.', retry: true }
   }
-  if (/fetch|network|timeout|timed out|429|50[0-9]|blockhash|ECONN|ENOTFOUND|socket|expired/i.test(message)) {
+  if (/fetch|network|timeout|timed out|429|rate limit|too many requests|50[0-9]|blockhash|ECONN|ENOTFOUND|socket|expired/i.test(message)) {
     return { text: 'Could not reach Solana devnet or the Private ER just now. Nothing was applied. Try again.', retry: true }
   }
   return { text: `Something went wrong: ${message.slice(0, 160)}`, retry: false }

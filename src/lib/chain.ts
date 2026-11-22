@@ -304,6 +304,15 @@ export async function fetchLeague(key: PublicKey): Promise<LeagueView | null> {
   return toLeague(key, base.data, delegated)
 }
 
+/**
+ * The live copy of a delegated league, straight from the rollup. One request, none to the base
+ * layer: used by the desk helper, which polls every second while a settlement window is open.
+ */
+export async function fetchLiveLeague(key: PublicKey): Promise<LeagueView | null> {
+  const live = await teePublicConnection.getAccountInfo(key)
+  return live ? toLeague(key, live.data, true) : null
+}
+
 export async function fetchEntries(league: PublicKey): Promise<EntryView[]> {
   const rows = await programAccounts('Entry', [{ memcmp: { offset: 8, bytes: league.toBase58() } }])
   return rows.map((r) => toEntry(r.pubkey, r.account.data))
