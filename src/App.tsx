@@ -2,6 +2,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useEffect } from 'react'
 import Footer from './components/Footer'
 import Navbar from './components/Navbar'
+import RpcStatus from './components/RpcStatus'
 import Audit from './pages/Audit'
 import Create from './pages/Create'
 import Desk from './pages/Desk'
@@ -24,6 +25,7 @@ export default function App() {
     <div className="shell">
       <ScrollTop />
       <Navbar />
+      <RpcStatus />
       <main className="main">
         {/* keyed by path so every page change replays the 180ms fade and slide */}
         <div className="pagefx" key={location.pathname}>

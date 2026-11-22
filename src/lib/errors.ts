@@ -72,6 +72,18 @@ function programErrorName(e: unknown): string | null {
   return custom ? (byCode.get(Number(custom[1])) ?? null) : null
 }
 
+/**
+ * A failed read, in plain words. Raw JSON-RPC replies never reach the screen: rate limits and server
+ * errors become "Devnet is busy, retrying…", everything else a short sentence without the payload.
+ */
+export function loadError(e: unknown): { text: string; busy: boolean } {
+  const message = e instanceof Error ? e.message : String(e)
+  if (/429|rate limit|too many|\b5\d\d\b|fetch|network|timeout|timed out|ECONN|ENOTFOUND|socket|Load failed|failed to get/i.test(message)) {
+    return { text: 'Devnet is busy, retrying…', busy: true }
+  }
+  return { text: `Could not load this data. ${message.replace(/[{[].*$/s, '').trim().slice(0, 120)}`.trim(), busy: false }
+}
+
 /** Turn anything a Desk action can throw into a plain sentence and a retry decision. */
 export function explain(e: unknown): Explained {
   const name = programErrorName(e)

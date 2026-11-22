@@ -576,3 +576,17 @@
 /* long badges wrap inside the trophy card instead of spilling out of it */
 .trophy > .stack { min-width: 0; }
 .trophy .status { max-width: 100%; white-space: normal; }
+
+/* devnet busy / cached data line under the navbar */
+.rpcbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem var(--gutter);
+  border-bottom: 1px solid var(--ink);
+  background: var(--card);
+  font-size: 0.82rem;
+}
+.rpcbar .tag { margin-right: 0.3rem; }

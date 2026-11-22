@@ -7,6 +7,7 @@ import { leagueName, rankCards, scoredVoided } from '../lib/format'
 import { useLeague, usePoll } from '../lib/hooks'
 import { useSigner } from '../lib/wallet'
 import Addr from '../components/Addr'
+import LoadFailed from '../components/LoadFailed'
 import DeskShell from '../components/DeskShell'
 import Seal from '../components/Seal'
 import Skeleton from '../components/Skeleton'
@@ -53,7 +54,7 @@ export default function Standings() {
   }, [addr])
   const signer = useSigner()
   const { data: league } = useLeague(key, 5000)
-  const cards = usePoll(() => (key ? fetchCards(key) : Promise.resolve([])), 10_000, [key?.toBase58()])
+  const cards = usePoll(() => (key ? fetchCards(key, league?.playerCount) : Promise.resolve([])), 10_000, [key?.toBase58(), league?.playerCount])
 
   const scored = (cards.data ?? []).filter((c) => c.roundsScored > 0)
   const ranked = rankCards(cards.data ?? [], league?.status === 4 ? league.winner.toBase58() : undefined)
@@ -70,7 +71,7 @@ export default function Standings() {
         <header className="page__head">
           <span className="caption">Rank-only standings · {leagueName(key.toBase58())}</span>
           <h1>{league ? `${settledRounds} of ${league.nRounds} rounds settled` : 'Standings'}</h1>
-          {league && settledRounds > 0 && !cards.loading && (
+          {league && settledRounds > 0 && cards.data && (
             <div className="row">
               <span className="tag">{scoredVoided(scoredRounds, settledRounds)}</span>
             </div>
@@ -81,9 +82,9 @@ export default function Standings() {
           </p>
         </header>
 
-        {cards.error && <p className="notice notice--bad">{cards.error}</p>}
-        {cards.loading && <Skeleton count={3} height="4rem" />}
-        {!cards.loading && scored.length === 0 && (
+        {cards.error && <LoadFailed error={cards.error} busy={cards.busy} onRetry={() => void cards.refresh()} stale={!!cards.data} />}
+        {!cards.data && !cards.failed && <Skeleton count={3} height="4rem" />}
+        {cards.data && scored.length === 0 && (
           <p className="empty">No round has settled yet, so there is no order to show. Ranks stay sealed until the first settlement.</p>
         )}
 

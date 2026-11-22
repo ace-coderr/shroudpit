@@ -7,13 +7,14 @@ import { ASSETS, CLOSE_MODE_LABEL, STATUS_LABEL, explorerAddress } from '../lib/
 import { useLeagues, usePoll } from '../lib/hooks'
 import { useSigner } from '../lib/wallet'
 import Addr from '../components/Addr'
+import LoadFailed from '../components/LoadFailed'
 import Shroud from '../components/Shroud'
 import Skeleton from '../components/Skeleton'
 
 const assetOf = (l: LeagueView) => ASSETS.find((a) => priceFeedPda(a.id).equals(l.feed))?.symbol ?? 'custom feed'
 
 export default function Lobby() {
-  const { data, error, loading, refresh } = useLeagues()
+  const { data, error, busy: leaguesBusy, loading, refresh } = useLeagues()
   const signer = useSigner()
   const me = signer?.publicKey
   const [busy, setBusy] = useState<string | null>(null)
@@ -80,9 +81,9 @@ export default function Lobby() {
       <p className="muted" style={{ marginBottom: '1rem' }}>
         Read live from Solana devnet. <Link to="/create">Start your own.</Link>
       </p>
-      {error && <p className="notice notice--bad">Could not read leagues: {error}</p>}
+      {error && <LoadFailed error={error} busy={leaguesBusy} onRetry={() => void refresh()} stale={!!data} />}
       {msg && <p className={`notice ${msg.ok ? 'notice--ok' : 'notice--bad'}`} role="status">{msg.text}</p>}
-      {loading && <Skeleton />}
+      {loading && !data && !error && <Skeleton />}
       {data && data.length === 0 && (
         <p className="empty">No leagues exist yet. The first one appears here as soon as someone creates it.</p>
       )}

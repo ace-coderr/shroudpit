@@ -2,11 +2,12 @@ import { Link } from 'react-router-dom'
 import { STATUS_LABEL } from '../lib/config'
 import { useLeagues } from '../lib/hooks'
 import Addr from '../components/Addr'
+import LoadFailed from '../components/LoadFailed'
 import Skeleton from '../components/Skeleton'
 
 /** The Desk and Standings tabs need a league: this lists every league so one can be picked. */
 export default function LeagueIndex({ target }: { target: 'desk' | 'standings' }) {
-  const { data, error, loading } = useLeagues()
+  const { data, error, busy, loading, refresh } = useLeagues()
   const title = target === 'desk' ? 'Pick a desk' : 'Pick a league'
   return (
     <section className="page">
@@ -19,7 +20,7 @@ export default function LeagueIndex({ target }: { target: 'desk' | 'standings' }
             : 'Ranks only change when a round settles. Choose a league to see its order.'}
         </p>
       </header>
-      {error && <p className="notice notice--bad">Could not read leagues: {error}</p>}
+      {error && <LoadFailed error={error} busy={busy} onRetry={() => void refresh()} stale={!!data} />}
       {loading && <Skeleton count={2} height="5rem" />}
       {data && data.length === 0 && <p className="empty">No leagues exist yet. <Link to="/create">Create the first one.</Link></p>}
       <ul className="cards">

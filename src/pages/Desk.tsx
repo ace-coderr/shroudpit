@@ -15,6 +15,7 @@ import { explain } from '../lib/errors'
 import { teeSession } from '../lib/session'
 import { useSigner } from '../lib/wallet'
 import Addr from '../components/Addr'
+import LoadFailed from '../components/LoadFailed'
 import CloseBand from '../components/CloseBand'
 import DeskShell from '../components/DeskShell'
 import ResultCard from '../components/ResultCard'
@@ -39,7 +40,7 @@ export default function Desk() {
   }, [addr])
   const signer = useSigner()
   const now = useNow(1000)
-  const { data: league, error } = useLeague(key, 2000)
+  const { data: league, error, busy: leagueBusy, failed: leagueFailed, refresh: refreshLeague } = useLeague(key, 2000)
 
   const [unlocked, setUnlocked] = useState(false)
   const [attested, setAttested] = useState<boolean | null>(null)
@@ -58,7 +59,7 @@ export default function Desk() {
     8000,
     [signer?.publicKey.toBase58(), key?.toBase58()],
   )
-  const players = usePoll(() => (key ? fetchEntries(key) : Promise.resolve([] as EntryView[])), 10_000, [key?.toBase58()])
+  const players = usePoll(() => (key ? fetchEntries(key, league?.playerCount) : Promise.resolve([] as EntryView[])), 10_000, [key?.toBase58(), league?.playerCount])
 
   // final scores, for the result card once the league is Revealing or Finished
   const cards = usePoll(
@@ -173,7 +174,7 @@ export default function Desk() {
 
   if (!key) return <section className="page"><p className="notice notice--bad">That league address is not valid.</p></section>
   // A failed poll must not blank a desk that has already loaded: only show the error when there is nothing to show.
-  if (error && !league) return <section className="page"><p className="notice notice--bad">{explain(error).text} This page keeps trying by itself.</p></section>
+  if (leagueFailed && error) return <section className="page"><LoadFailed error={error} busy={leagueBusy} onRetry={() => void refreshLeague()} /></section>
   if (!league) return <section className="page"><Skeleton count={2} height="10rem" /></section>
 
   const e = mine.data?.entry ?? null
@@ -206,7 +207,7 @@ export default function Desk() {
           </div>
         </header>
 
-        {error && <p className="notice notice--warn small" role="status">{explain(error).text} Showing the last data; this page keeps trying by itself.</p>}
+        {error && <LoadFailed error={error} busy={leagueBusy} onRetry={() => void refreshLeague()} stale />}
         <SettleBanner league={league} helperOn={help} />
 
         <div className="desk">

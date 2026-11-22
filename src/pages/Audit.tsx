@@ -7,9 +7,9 @@ import type { EntryView, LeagueView, SecretView } from '../lib/chain'
 import { CLOSE_MODE_LABEL, STATUS_LABEL, explorerAddress, explorerTx } from '../lib/config'
 import { fmtUtc, leagueName, rankCards } from '../lib/format'
 import { hex, short, useLeague, usePoll } from '../lib/hooks'
-import { explain } from '../lib/errors'
 import { labelTransactions } from '../lib/settlement'
 import Addr from '../components/Addr'
+import LoadFailed from '../components/LoadFailed'
 import CopyField from '../components/CopyField'
 import DeskShell from '../components/DeskShell'
 import SealStamp from '../components/SealStamp'
@@ -69,11 +69,11 @@ export default function Audit() {
       return null
     }
   }, [addr])
-  const { data: league, error: leagueError } = useLeague(key, 5000)
-  const cards = usePoll(() => (key ? fetchCards(key) : Promise.resolve([])), 12_000, [key?.toBase58()])
+  const { data: league, error: leagueError, busy: leagueBusy, failed: leagueFailed, refresh: refreshLeague } = useLeague(key, 5000)
+  const cards = usePoll(() => (key ? fetchCards(key, league?.playerCount) : Promise.resolve([])), 12_000, [key?.toBase58(), league?.playerCount])
   const finished = league?.status === 4
   // positions, nonces and close times exist on the base layer only after the final reveal
-  const entries = usePoll(() => (key && finished ? fetchEntries(key) : Promise.resolve([])), 15_000, [key?.toBase58(), finished])
+  const entries = usePoll(() => (key && finished ? fetchEntries(key, league?.playerCount) : Promise.resolve([])), 15_000, [key?.toBase58(), finished, league?.playerCount])
   const secret = usePoll(() => (key && finished ? fetchSecretBase(key) : Promise.resolve(null)), 15_000, [key?.toBase58(), finished])
   const sigs = usePoll(async () => (key ? baseConnection.getSignaturesForAddress(key, { limit: 25 }) : []), 20_000, [key?.toBase58()])
   const [params] = useSearchParams()
@@ -127,7 +127,7 @@ export default function Audit() {
   }, [focus, cardCount])
 
   if (!key) return <section className="page"><p className="notice notice--bad">That league address is not valid.</p></section>
-  if (leagueError && !league) return <section className="page"><p className="notice notice--bad">{explain(leagueError).text} This page keeps trying by itself.</p></section>
+  if (leagueFailed && leagueError) return <section className="page"><LoadFailed error={leagueError} busy={leagueBusy} onRetry={() => void refreshLeague()} /></section>
   const revealed = finished && !!secret.data && secret.data.history[0].closeAt > 0
   const ranked = rankCards(cards.data ?? [], finished && league ? league.winner.toBase58() : undefined)
   const sortedEntries = [...(entries.data ?? [])].sort(keyOrder)
@@ -183,8 +183,9 @@ export default function Audit() {
 
         <div className="card" style={{ marginBottom: '1.25rem' }}>
           <div className="card__head"><h3>{finished ? 'Final scores' : 'Scores so far'}</h3><StatusBadge kind="revealed" label="Public each round" /></div>
-          {cards.loading && <Skeleton count={1} height="5rem" />}
-          {!cards.loading && ranked.every((c) => c.roundsScored === 0) && <p className="empty">No round has settled yet.</p>}
+          {cards.error && <LoadFailed error={cards.error} busy={cards.busy} onRetry={() => void cards.refresh()} stale={!!cards.data} />}
+          {!cards.data && !cards.failed && <Skeleton count={1} height="5rem" />}
+          {cards.data && ranked.every((c) => c.roundsScored === 0) && <p className="empty">No round has settled yet.</p>}
           {ranked.some((c) => c.roundsScored > 0) && (
             <table className="dtable">
               <thead><tr><th>Wallet</th><th>Rounds</th><th>Last return</th><th>Rating</th></tr></thead>
@@ -205,7 +206,18 @@ export default function Audit() {
           )}
         </div>
 
-        {!revealed && (
+        {finished && !revealed && (
+          <div className="card" style={{ marginBottom: '1.25rem' }}>
+            <div className="card__head"><h3>Positions and close times</h3></div>
+            {(entries.failed || secret.failed) ? (
+              <LoadFailed error={entries.error ?? secret.error ?? 'Could not load the reveal.'} busy={entries.busy || secret.busy} onRetry={() => { void entries.refresh(); void secret.refresh() }} />
+            ) : (
+              <Skeleton count={1} height="5rem" />
+            )}
+          </div>
+        )}
+
+        {!finished && (
           <div className="card" style={{ marginBottom: '1.25rem' }}>
             <div className="card__head"><h3>Positions and close times</h3><StatusBadge kind="unverified" label="Not verified yet" /></div>
             <p className="muted">

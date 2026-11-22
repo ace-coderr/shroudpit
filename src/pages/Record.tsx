@@ -2,13 +2,14 @@ import { useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { PublicKey } from '@solana/web3.js'
 import { claimTrophy } from '../lib/actions'
-import { fetchCardsForPlayer, fetchLeagues, fetchTrophies, trophyClaimed } from '../lib/chain'
+import { fetchRecord } from '../lib/chain'
 import { STATUS_LABEL, explorerAddress } from '../lib/config'
 import { leagueName } from '../lib/format'
 import { usePoll } from '../lib/hooks'
 import { useSigner } from '../lib/wallet'
 import Addr from '../components/Addr'
 import CopyField from '../components/CopyField'
+import LoadFailed from '../components/LoadFailed'
 import Shroud from '../components/Shroud'
 import Skeleton from '../components/Skeleton'
 import StatusBadge from '../components/StatusBadge'
@@ -35,35 +36,10 @@ export default function Record() {
   }, [viewed, signer?.publicKey])
   const own = !!pk && !!signer && signer.publicKey.equals(pk)
 
-  const rec = usePoll(
-    async () => {
-      if (!pk) return []
-      const [cards, leagues] = await Promise.all([fetchCardsForPlayer(pk), fetchLeagues()])
-      const byKey = new Map(leagues.map((l) => [l.key.toBase58(), l]))
-      return cards
-        .map((card) => ({ card, league: byKey.get(card.league.toBase58()) }))
-        .filter((r) => r.league)
-        .sort((a, b) => Number(b.league!.id) - Number(a.league!.id))
-    },
-    20_000,
-    [pk?.toBase58()],
-  )
+  // One read for the page: cards, leagues and trophies in a small fixed burst (see fetchRecord).
+  const rec = usePoll(() => (pk ? fetchRecord(pk) : Promise.resolve(null)), 20_000, [pk?.toBase58()])
   const [claimMsg, setClaimMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [claiming, setClaiming] = useState<string | null>(null)
-
-  // trophies the wallet really holds, and finished leagues it won but has not claimed yet
-  const trophies = usePoll(
-    async () => {
-      if (!pk) return { held: [], claimable: [] }
-      const leagues = await fetchLeagues()
-      const held = await fetchTrophies(pk, leagues)
-      const won = leagues.filter((l) => l.status === 4 && l.winner.equals(pk))
-      const claimed = await Promise.all(won.map((l) => trophyClaimed(l.key)))
-      return { held, claimable: won.filter((_, i) => !claimed[i]) }
-    },
-    20_000,
-    [pk?.toBase58()],
-  )
 
   async function claim(league: PublicKey) {
     if (!signer) return
@@ -72,7 +48,7 @@ export default function Record() {
     try {
       await claimTrophy(signer, league)
       setClaimMsg({ ok: true, text: 'Trophy claimed. It is now in your wallet.' })
-      await trophies.refresh()
+      await rec.refresh()
     } catch (e) {
       setClaimMsg({ ok: false, text: e instanceof Error ? e.message : String(e) })
     } finally {
@@ -80,7 +56,10 @@ export default function Record() {
     }
   }
 
-  const rows = rec.data ?? []
+  const data = rec.data
+  const rows = data?.rows ?? []
+  // never a zero or an empty state while the data is missing: a dash if the load failed, an ellipsis while loading
+  const stat = (v: string | number) => (data ? v : rec.failed ? '–' : '…')
   const scored = rows.filter((r) => r.card.roundsScored > 0)
   const wins = rows.filter((r) => r.league!.status === 4 && pk && r.league!.winner.equals(pk)).length
   const totalRounds = scored.reduce((n, r) => n + r.card.roundsScored, 0)
@@ -105,10 +84,10 @@ export default function Record() {
         <>
           <div className="card" style={{ marginBottom: '1.25rem' }}>
             <dl className="facts facts--big">
-              <div><dt>Leagues played</dt><dd>{rec.loading ? '…' : rows.length}</dd></div>
-              <div><dt>Rounds scored</dt><dd>{rec.loading ? '…' : totalRounds}</dd></div>
-              <div><dt>Leagues won</dt><dd>{rec.loading ? '…' : wins}</dd></div>
-              <div><dt>Best rating</dt><dd>{rec.loading ? '…' : best ?? '-'}</dd></div>
+              <div><dt>Leagues played</dt><dd>{stat(rows.length)}</dd></div>
+              <div><dt>Rounds scored</dt><dd>{stat(totalRounds)}</dd></div>
+              <div><dt>Leagues won</dt><dd>{stat(wins)}</dd></div>
+              <div><dt>Best rating</dt><dd>{stat(best ?? '-')}</dd></div>
             </dl>
             <div style={{ marginTop: '1rem' }}>
               <CopyField label="Shareable link" value={shareUrl} />
@@ -117,15 +96,16 @@ export default function Record() {
 
           <div className="card" style={{ marginBottom: '1.25rem' }}>
             <div className="card__head"><h3>Trophies</h3></div>
-            {trophies.loading && <Skeleton count={1} height="5rem" />}
-            {!trophies.loading && (trophies.data?.held.length ?? 0) === 0 && (trophies.data?.claimable.length ?? 0) === 0 && (
+            {!data && !rec.failed && <Skeleton count={1} height="5rem" />}
+            {!data && rec.failed && <p className="muted small">Trophies could not be loaded yet.</p>}
+            {data && data.held.length === 0 && data.claimable.length === 0 && (
               <div className="stack">
                 <Shroud revealed={false} bare caption="no trophy yet" />
                 <p className="muted small">The winner of a finished league can claim one here.</p>
               </div>
             )}
             <div className="stack">
-              {trophies.data?.held.map((h, i) => (
+              {data?.held.map((h, i) => (
                 <div key={h.mint.toBase58()} className="trophy enter" style={{ ['--i' as string]: i }}>
                   <span className="trophy__disc"><Cup /></span>
                   <div className="stack" style={{ gap: '0.3rem' }}>
@@ -135,7 +115,7 @@ export default function Record() {
                   </div>
                 </div>
               ))}
-              {trophies.data?.claimable.map((l) => (
+              {data?.claimable.map((l) => (
                 <div key={l.key.toBase58()} className="trophy">
                   <span className="trophy__disc" style={{ background: 'var(--paper)', color: 'var(--ink)' }}><Cup /></span>
                   <div className="stack" style={{ gap: '0.4rem' }}>
@@ -155,9 +135,9 @@ export default function Record() {
             {claimMsg && <p className={`notice ${claimMsg.ok ? 'notice--ok' : 'notice--bad'}`} style={{ marginTop: '0.75rem' }}>{claimMsg.text}</p>}
           </div>
 
-          {rec.error && <p className="notice notice--bad">{rec.error}</p>}
-          {rec.loading && <Skeleton count={2} height="4rem" />}
-          {!rec.loading && rows.length === 0 && <p className="empty">No leagues yet. Join one from the <Link to="/">lobby</Link>.</p>}
+          {rec.error && <LoadFailed error={rec.error} busy={rec.busy} onRetry={() => void rec.refresh()} stale={!!data} />}
+          {!data && !rec.failed && <Skeleton count={2} height="4rem" />}
+          {data && rows.length === 0 && <p className="empty">No leagues yet. Join one from the <Link to="/">lobby</Link>.</p>}
 
           {rows.length > 0 && (
             <table className="dtable">

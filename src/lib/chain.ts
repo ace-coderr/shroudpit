@@ -313,19 +313,113 @@ export async function fetchLiveLeague(key: PublicKey): Promise<LeagueView | null
   return live ? toLeague(key, live.data, true) : null
 }
 
-export async function fetchEntries(league: PublicKey): Promise<EntryView[]> {
-  const rows = await programAccounts('Entry', [{ memcmp: { offset: 8, bytes: league.toBase58() } }])
-  return rows.map((r) => toEntry(r.pubkey, r.account.data))
+// ---------- who plays in a league: found once, then derived ----------
+//
+// getProgramAccounts is the one call public devnet rate-limits hardest, so it is used only to find
+// out WHO is in a league (the score cards carry the player). After that every entry and card is a
+// PDA of (league, player): it is read with getMultipleAccounts, which is cheap and batchable.
+
+interface PlayerList {
+  players: PublicKey[]
+  t: number
+  complete: boolean
+}
+const PLAYERS_STORE = 'shroudpit.players.v1.'
+const playerLists = new Map<string, PlayerList>()
+
+function loadPlayerList(league: string): PlayerList | null {
+  const mem = playerLists.get(league)
+  if (mem) return mem
+  try {
+    const raw = localStorage.getItem(PLAYERS_STORE + league)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { players: string[]; t: number }
+    const list = { players: parsed.players.map((p) => new PublicKey(p)), t: parsed.t, complete: true }
+    playerLists.set(league, list)
+    return list
+  } catch {
+    return null
+  }
+}
+function savePlayerList(league: string, players: PublicKey[], expected: number | undefined) {
+  // a list is final only when we know how many players the league has and have found them all
+  const complete = expected !== undefined && expected >= 2 && players.length >= expected
+  playerLists.set(league, { players, t: Date.now(), complete })
+  if (!complete) return
+  try {
+    localStorage.setItem(PLAYERS_STORE + league, JSON.stringify({ players: players.map((p) => p.toBase58()), t: Date.now() }))
+  } catch {
+    /* storage unavailable: the in-memory copy still works for this session */
+  }
+}
+/** A usable remembered player list, or null when the players have to be looked up. */
+function knownPlayers(league: PublicKey, expected?: number): PublicKey[] | null {
+  const list = loadPlayerList(league.toBase58())
+  if (!list) return null
+  if (list.complete && (expected === undefined || list.players.length >= expected)) return list.players
+  // an incomplete list (joining may still be open) is only trusted briefly
+  return expected !== undefined && list.players.length >= expected ? list.players : Date.now() - list.t < 15_000 ? list.players : null
 }
 
-export async function fetchCards(league: PublicKey): Promise<CardView[]> {
+async function discoverCards(league: PublicKey, expected?: number): Promise<CardView[]> {
   const rows = await programAccounts('Card', [{ memcmp: { offset: 8, bytes: league.toBase58() } }])
-  return rows.map((r) => toCard(r.pubkey, r.account.data))
+  const cards = rows.map((r) => toCard(r.pubkey, r.account.data))
+  savePlayerList(league.toBase58(), cards.map((c) => c.player), expected)
+  return cards
+}
+
+/**
+ * Accounts created under an older program layout have a different size. The old getProgramAccounts
+ * filters excluded them silently, so derived reads must too, or decoding them throws.
+ */
+const isCurrent = (ai: { data: Uint8Array } | null, name: string): ai is { data: Uint8Array } => !!ai && ai.data.length === accountSize(name)
+
+/** getMultipleAccounts in chunks of 100 (the RPC limit), in order, with null for missing accounts. */
+async function readMany(conn: Connection, keys: PublicKey[]) {
+  const out: Awaited<ReturnType<Connection['getMultipleAccountsInfo']>> = []
+  for (let i = 0; i < keys.length; i += 100) out.push(...(await conn.getMultipleAccountsInfo(keys.slice(i, i + 100))))
+  return out
+}
+
+/** Entries of a league. Pass the league's player count when known so the player list can be trusted. */
+export async function fetchEntries(league: PublicKey, expected?: number): Promise<EntryView[]> {
+  let players = knownPlayers(league, expected)
+  if (!players) players = (await discoverCards(league, expected)).map((c) => c.player)
+  const keys = players.map((p) => entryPda(league, p))
+  const infos = await readMany(baseConnection, keys)
+  return infos.flatMap((ai, i) => (isCurrent(ai, 'Entry') ? [toEntry(keys[i], ai.data)] : []))
+}
+
+/** Score cards of a league: one lookup the first time, plain batched reads after that. */
+export async function fetchCards(league: PublicKey, expected?: number): Promise<CardView[]> {
+  const players = knownPlayers(league, expected)
+  if (!players) return discoverCards(league, expected)
+  const keys = players.map((p) => cardPda(league, p))
+  const infos = await readMany(baseConnection, keys)
+  return infos.flatMap((ai, i) => (isCurrent(ai, 'Card') ? [toCard(keys[i], ai.data)] : []))
 }
 
 export async function fetchCardsForPlayer(player: PublicKey): Promise<CardView[]> {
   const rows = await programAccounts('Card', [{ memcmp: { offset: 8 + 32, bytes: player.toBase58() } }])
   return rows.map((r) => toCard(r.pubkey, r.account.data))
+}
+
+/** Leagues by address: one batched read on devnet, plus the live public copy from the rollup. */
+export async function fetchLeaguesByKey(keys: PublicKey[]): Promise<LeagueView[]> {
+  if (keys.length === 0) return []
+  const [base, live] = await Promise.all([
+    readMany(baseConnection, keys),
+    readMany(teePublicConnection, keys).catch(() => [] as Awaited<ReturnType<typeof readMany>>),
+  ])
+  return keys
+    .flatMap((key, i) => {
+      const b = base[i]
+      if (!b || !isCurrent(b, 'League')) return []
+      const delegated = !b.owner.equals(PROGRAM_ID)
+      const l = delegated && isCurrent(live[i] ?? null, 'League') ? live[i] : null
+      return [toLeague(key, l ? l.data : b.data, delegated)]
+    })
+    .sort((x, y) => Number(y.id) - Number(x.id))
 }
 
 /** Revealed secret (only meaningful once committed to the base layer). */
@@ -374,18 +468,41 @@ export async function trophyClaimed(league: PublicKey): Promise<boolean> {
   return !!(await baseConnection.getAccountInfo(trophyMint(league)))
 }
 
-/** Trophies a wallet really holds: league trophy mints with a balance of 1 in the wallet. */
-export async function fetchTrophies(player: PublicKey, leagues: LeagueView[]) {
-  const byMint = new Map(leagues.filter((l) => l.status === 4).map((l) => [trophyMint(l.key).toBase58(), l]))
-  if (byMint.size === 0) return []
-  const accounts = await baseConnection.getParsedTokenAccountsByOwner(player, { programId: TOKEN_PROGRAM })
+const ATA_PROGRAM = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
+const ata = (owner: PublicKey, mint: PublicKey) =>
+  PublicKey.findProgramAddressSync([owner.toBytes(), TOKEN_PROGRAM.toBytes(), mint.toBytes()], ATA_PROGRAM)[0]
+
+/**
+ * Everything the Record page needs, in a small fixed number of calls:
+ *   1. the wallet's score cards (the one getProgramAccounts lookup),
+ *   2. those leagues in one batched read (plus one on the rollup for live ones),
+ *   3. for finished leagues: each league's trophy mint and the wallet's token account for it,
+ *      both derived addresses, in one more batched read. No token-account scan.
+ * A wallet can only win a league it played, so deriving from its own leagues finds its trophies.
+ */
+export async function fetchRecord(player: PublicKey) {
+  const cards = await fetchCardsForPlayer(player)
+  const leagues = await fetchLeaguesByKey([...new Set(cards.map((c) => c.league.toBase58()))].map((k) => new PublicKey(k)))
+  const byKey = new Map(leagues.map((l) => [l.key.toBase58(), l]))
+  const rows = cards
+    .map((card) => ({ card, league: byKey.get(card.league.toBase58()) }))
+    .filter((r): r is { card: CardView; league: LeagueView } => !!r.league)
+    .sort((a, b) => Number(b.league.id) - Number(a.league.id))
+
+  const finished = leagues.filter((l) => l.status === 4)
+  const mints = finished.map((l) => trophyMint(l.key))
+  const infos = finished.length ? await readMany(baseConnection, [...mints, ...mints.map((m) => ata(player, m))]) : []
   const held: { mint: PublicKey; league: LeagueView }[] = []
-  for (const a of accounts.value) {
-    const info = a.account.data.parsed.info
-    const league = byMint.get(info.mint)
-    if (league && Number(info.tokenAmount.amount) >= 1) held.push({ mint: new PublicKey(info.mint), league })
-  }
-  return held
+  const claimable: LeagueView[] = []
+  finished.forEach((league, i) => {
+    const mintExists = !!infos[i]
+    const tokenAccount = infos[finished.length + i]
+    // SPL token account layout: mint (32) owner (32) amount (u64 LE at byte 64)
+    const amount = tokenAccount && tokenAccount.data.length >= 72 ? new DataView(tokenAccount.data.buffer, tokenAccount.data.byteOffset).getBigUint64(64, true) : 0n
+    if (amount >= 1n) held.push({ mint: mints[i], league })
+    if (!mintExists && league.winner.equals(player)) claimable.push(league)
+  })
+  return { rows, held, claimable }
 }
 
 /** Map a failed transaction's logs to the program error name. */
