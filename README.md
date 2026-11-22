@@ -49,7 +49,7 @@ base seed = sha256(league, epoch, slot at lock-in, every committed (wallet, nonc
 - **Default (`Nonces + slot`).** `close = start + min + (seed mod (max - min + 1))`.
 - **With VRF (`Nonces + slot + VRF`).** The program requests randomness and, if the output arrives within 20 seconds, uses `seed = sha256(base seed, vrf output)`. If it does not arrive in time, `finalize_without_vrf` derives the close from the base seed alone. A VRF callback that arrives after the close was derived is rejected, so an output cannot be replayed or injected.
 
-Nonces must be committed **before** lock-in: `commit_nonce` is refused once the phase closes, a nonce cannot be changed once committed, and each round needs fresh nonces (an epoch counter makes old nonces unusable). Nonces and each round's base seed are revealed when the league finishes, so anyone can recompute every round's close time **after the final round**; the Audit page does exactly that in the browser.
+Nonces must be committed **before** lock-in: `commit_nonce` is refused once the phase closes, a nonce cannot be changed once committed, and each round needs its own commit (a nonce from an earlier round is not counted until it is committed again; committing the same bytes again is accepted but gives no advantage, because nonces stay private until the final reveal and every seed also mixes in the lock-in slot and the other players' nonces). Nonces and each round's base seed are revealed when the league finishes, so anyone can recompute every round's close time **after the final round**; the Audit page does exactly that in the browser.
 
 ### Limits of the nonce-based derivation
 
@@ -185,6 +185,30 @@ The public devnet RPC rate-limits `getProgramAccounts` (HTTP 429), which is how 
 Important: a Vite build variable is compiled into the public JavaScript, so anyone can read the value from the site's source. Use a devnet-only key, restrict it to this site's origin in the provider's dashboard (allowed domains or origins), watch its usage, and rotate it if it is abused.
 
 The helper that locks in, settles and reveals from an open desk looks a league's players up once and reuses them, so polling every second does not repeat that call.
+
+## Security review
+
+### Threat model: what a player can and cannot learn
+
+| Who | During a round | After each round | After the final round |
+| --- | --- | --- | --- |
+| A player (or the creator) | Their own position and nonce; the public league state (phase, round, deadlines, player count, who joined) | The public score cards: every player's ratings and rank order | Every player's positions, nonces and close times; the Audit page recomputes every close time |
+| Another player or an outsider | Cannot read anyone else's entry, the secret or the hidden close time through RPC; cannot recover a position from transaction history (non-members get an empty shell) | The same public score cards, nothing more | Everything above, published together |
+| The creator | Same as a player. Cannot read the secret or choose the close time | Same | Same |
+
+What is not hidden: who joined which league (join and delegate transactions are public) and the score cards after each round. What is not verified: whether the timing or count of a player's rollup transactions is visible to a non-member.
+
+### Negative tests
+
+`scripts/audit/negative.mjs` sends 58 transactions the program must reject (or leave without any effect) to three throwaway leagues on devnet, with the expected error code and a transaction link for each; 57 behaved as expected. The exception, N4, is a replay of a previous round's nonce, which is accepted by design (see "How the close time is derived"). Coverage: nonces after lock-in and twice, direct `callback_close`, wrong and look-alike price feeds, double joins, wrong, mismatched, reordered and foreign-league entry sets at settlement, reveal and finish, oversized and repeated reveal chunks, wrong validators and delegation accounts, `set_position` by a non-owner and after the close, non-creator calls, and every settle, reveal and finish call after the league is Finished. Results, with what was tested versus only read, are in [docs/audit-checklist.md](docs/audit-checklist.md).
+
+### Known limits
+
+- **An open client is needed within the 60 s settle window.** Settlement is permissionless but nothing triggers it by itself (the scheduled-task route did not execute in the Private ER). If no open desk, script or anyone else settles within 60 seconds of the hidden close, the round is voided and nobody is scored.
+- **All players must be online in the 45 s nonce window.** A player who misses it simply does not contribute; the round needs at least two nonces, otherwise the creator has to open a new window.
+- **The TEE is a trust assumption.** Positions and the close time are hidden by the attested Private ER (a trusted execution environment run by MagicBlock). If it were compromised, or the attestation not checked, it could see everything. The browser attempts the attestation check and shows when it could not complete.
+- **Multi-wallet nonce salt.** The close time is unpredictable only if at least one contributing nonce is unknown to the adversary. One person controlling every wallet that commits a nonce knows all the inputs and can compute the close time in advance. See "Limits of the nonce-based derivation".
+- **Price oracle.** The price comes from MagicBlock's oracle inside the rollup; the program checks the feed address, owner, positivity and freshness but trusts the oracle's value.
 
 ## Deployment
 
