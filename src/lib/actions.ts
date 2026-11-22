@@ -104,6 +104,21 @@ async function remainingEntries(league: PublicKey, writable: boolean) {
   return keys.map((pubkey) => ({ pubkey, isSigner: false, isWritable: writable }))
 }
 
+/**
+ * Settlement takes [entry, card] pairs, both writable, in ascending entry-key order. Sending the
+ * entries alone fails with BadEntries (6013).
+ */
+export async function entryCardPairs(league: PublicKey) {
+  const entries = await fetchEntries(league)
+  return sortKeys(entries.map((e) => e.key)).flatMap((k) => {
+    const player = entries.find((e) => e.key.equals(k))!.player
+    return [
+      { pubkey: k, isSigner: false, isWritable: true },
+      { pubkey: cardPda(league, player), isSigner: false, isWritable: true },
+    ]
+  })
+}
+
 export async function lockIn(signer: Signer | Keypair, connection: Connection, league: PublicKey) {
   const tx = await programFor(connection, signer.publicKey)
     .methods.lockIn()
@@ -171,9 +186,9 @@ export async function settle(signer: Signer | Keypair, connection: Connection, l
   const tx = await programFor(connection, signer.publicKey)
     .methods.settleAndReveal()
     .accountsPartial({ league, secret: secretPda(league), priceFeed: feed })
-    .remainingAccounts(await remainingEntries(league, true))
+    .remainingAccounts(await entryCardPairs(league))
     .transaction()
-  return sendTee(connection, signer, tx)
+  return sendTee(connection, signer, withBudget(tx))
 }
 
 /**
