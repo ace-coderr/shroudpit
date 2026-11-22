@@ -21,7 +21,10 @@
 }
 
 /* page transition (180ms fade + slide) */
-.pagefx { animation: slide var(--t-page) var(--ease) both; }
+/* Opacity only: a transform on this wrapper would become the containing block of the
+   fixed bottom tab bar and push it to the end of the page. */
+.pagefx { animation: fade var(--t-page) var(--ease) backwards; }
+.pagefx .page > :first-child { animation: slide var(--t-page) var(--ease) backwards; }
 
 /* list entrance */
 .enter { animation: rise 260ms var(--ease) both; animation-delay: calc(var(--i, 0) * 45ms); }

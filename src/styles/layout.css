@@ -50,6 +50,7 @@
 }
 
 .wordmark {
+  min-height: 44px;
   font-family: var(--font-head);
   font-size: 1.45rem;
   letter-spacing: -0.03em;

@@ -10,6 +10,7 @@ html {
 
 body {
   margin: 0;
+  overflow-x: clip;
   background-color: var(--paper);
   /* subtle dotted grid */
   background-image: radial-gradient(rgba(14, 14, 14, 0.16) 1px, transparent 1px);
@@ -316,6 +317,9 @@ p { margin: 0; }
 
 .form input,
 .form select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   min-height: 44px;
   padding: 0.55rem 0.7rem;
   border: 2px solid var(--ink);
