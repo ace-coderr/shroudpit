@@ -22,7 +22,7 @@ export default function Shroud({
   return (
     <div className={`shroud shroud--${kind}${revealed ? ' shroud--revealed' : ''}${bare ? ' shroud--bare' : ''}`} role="img" aria-label={revealed ? title : 'Position, sealed'}>
       <div className="shroud__shape">
-        <svg viewBox="0 0 48 48" fill="currentColor" aria-hidden="true">
+        <svg className="icon" width="51" height="51" viewBox="0 0 48 48" fill="currentColor" aria-hidden="true">
           {side === 0 ? <rect x="6" y="21" width="36" height="6" rx="2" /> : <path d="M24 5l17 22H29v16H19V27H7z" />}
         </svg>
         <strong>{revealed ? title : 'Position'}</strong>

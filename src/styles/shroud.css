@@ -146,3 +146,6 @@
   background: var(--ink);
   background-image: repeating-linear-gradient(90deg, transparent 0 7px, rgba(241, 233, 216, 0.14) 7px 8px);
 }
+
+/* rotated stamp needs room so it stays inside the page gutter */
+.stamp { margin: 0.4rem 0.6rem; }

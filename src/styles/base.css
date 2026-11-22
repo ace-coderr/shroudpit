@@ -449,3 +449,9 @@ p { margin: 0; }
     flex: none;
   }
 }
+
+/* icon guard: an SVG without an explicit size can never blow up the layout */
+svg { max-width: 100%; }
+.icon { width: 20px; height: 20px; flex: none; display: inline-block; vertical-align: middle; }
+
+.form { margin-top: 1rem; }

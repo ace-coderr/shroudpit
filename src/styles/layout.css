@@ -322,6 +322,7 @@
 .sidebar a.is-active { border-color: var(--paper); background: #1a1a1a; }
 
 .sidebar .caption { color: #b9b29e; }
+.sidebar a svg { width: 20px; height: 20px; flex: none; }
 
 .deskshell__body { min-width: 0; }
 
@@ -356,8 +357,10 @@
     border-top: 3px solid transparent;
   }
   .tabbar a.is-active { border-top-color: var(--teal); background: #1a1a1a; }
-  .tabbar svg { width: 20px; height: 20px; }
-  .deskshell__body { padding-bottom: calc(var(--tab-h) + 1rem); }
+  .tabbar a svg { width: 22px; height: 22px; flex: none; }
+  .deskshell__body { padding-bottom: 1rem; }
+  /* keep the last footer row clear of the fixed tab bar */
+  body:has(.tabbar) .footer { padding-bottom: calc(var(--tab-h) + env(safe-area-inset-bottom)); }
 }
 
 /* ---------- lobby ---------- */
