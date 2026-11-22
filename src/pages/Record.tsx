@@ -2,7 +2,7 @@ import type { PublicKey } from '@solana/web3.js'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { claimTrophy } from '../lib/actions'
-import { fetchEntriesForPlayer, fetchLeagues, fetchTrophies, trophyClaimed } from '../lib/chain'
+import { fetchCardsForPlayer, fetchLeagues, fetchTrophies, trophyClaimed } from '../lib/chain'
 import { STATUS_LABEL, explorerAddress } from '../lib/config'
 import { short, usePoll } from '../lib/hooks'
 import { useSigner } from '../lib/wallet'
@@ -14,10 +14,10 @@ export default function Record() {
   const rec = usePoll(
     async () => {
       if (!pk) return []
-      const [entries, leagues] = await Promise.all([fetchEntriesForPlayer(pk), fetchLeagues()])
+      const [entries, leagues] = await Promise.all([fetchCardsForPlayer(pk), fetchLeagues()])
       const byKey = new Map(leagues.map((l) => [l.key.toBase58(), l]))
       return entries
-        .map((e) => ({ entry: e, league: byKey.get(e.league.toBase58()) }))
+        .map((card) => ({ card, league: byKey.get(card.league.toBase58()) }))
         .filter((r) => r.league)
         .sort((a, b) => Number(b.league!.id) - Number(a.league!.id))
     },
@@ -58,9 +58,9 @@ export default function Record() {
   }
 
   const rows = rec.data ?? []
-  const scored = rows.filter((r) => r.entry.roundsScored > 0)
+  const scored = rows.filter((r) => r.card.roundsScored > 0)
   const wins = rows.filter((r) => r.league!.status === 4 && r.league!.winner.equals(pk!)).length
-  const totalRounds = scored.reduce((n, r) => n + r.entry.roundsScored, 0)
+  const totalRounds = scored.reduce((n, r) => n + r.card.roundsScored, 0)
 
   return (
     <section className="page">
@@ -110,7 +110,7 @@ export default function Record() {
       {pk && rows.length === 0 && !rec.loading && <p className="empty">No leagues yet. Join one from the <Link to="/lobby">lobby</Link>.</p>}
 
       <ol className="table">
-        {rows.map(({ entry: e, league: l }) => (
+        {rows.map(({ card: e, league: l }) => (
           <li key={e.key.toBase58()}>
             <span className="grow">
               <Link className="mono" to={`/audit/${l!.key.toBase58()}`}>{short(l!.key.toBase58(), 5, 5)}</Link>{' '}

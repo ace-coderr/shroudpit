@@ -3,6 +3,7 @@ use anchor_lang::prelude::*;
 pub const LEAGUE_SEED: &[u8] = b"league";
 pub const ENTRY_SEED: &[u8] = b"entry";
 pub const SECRET_SEED: &[u8] = b"secret";
+pub const CARD_SEED: &[u8] = b"card";
 pub const TROPHY_SEED: &[u8] = b"trophy";
 
 pub const MAX_PLAYERS: u8 = 8;
@@ -24,6 +25,11 @@ pub const MAX_PRICE_AGE_SECS: i64 = 5;
 /// The settlement price must be published within this many seconds after the close.
 /// Bounds how far a settler can slide the settlement moment.
 pub const SETTLE_WINDOW_SECS: i64 = 60;
+
+/// Entries revealed per transaction. The validator rejects a commit bundle whose data totals more
+/// than about 2.7 KB (measured on devnet: 3 entries plus the secret pass, 8 entries fail), and an
+/// entry is about 540 bytes, so reveal at most 4 at a time.
+pub const REVEAL_CHUNK: usize = 4;
 
 /// The TEE validator of the Private Ephemeral Rollup (devnet). Entries must only ever be
 /// delegated here so positions stay inside the enclave.
@@ -48,6 +54,8 @@ pub enum Status {
     Finished = 4,
     /// Round opened: players are committing their private nonces.
     Nonces = 5,
+    /// Final round settled; entries are being revealed in chunks, then the league is finished.
+    Finishing = 6,
 }
 
 /// How the hidden close time is derived. The nonce-and-slot path always applies; VRF output is
@@ -89,16 +97,16 @@ pub struct League {
     pub settle_time: i64,
     /// Set when the league finishes: highest rating (ties: lowest key).
     pub winner: Pubkey,
+    /// Entries committed and undelegated so far during the final reveal.
+    pub revealed_count: u8,
 }
 
-/// Private (no members) while the round is live; revealed when committed at settlement so the
-/// derivation of the close time can be audited.
-#[account]
-#[derive(InitSpace)]
-pub struct Secret {
-    pub league: Pubkey,
-    pub bump: u8,
-    pub vrf_used: bool,
+/// Everything that fixes one round's close time. Kept for every round so each can be audited after
+/// the league ends.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Default, InitSpace)]
+pub struct RoundSecret {
+    pub epoch: u16,
+    pub started_at: i64,
     /// Unix time the round closes.
     pub close_at: i64,
     /// Slot recorded at lock-in.
@@ -107,17 +115,47 @@ pub struct Secret {
     pub base_seed: [u8; 32],
     /// VRF output, when it was mixed in.
     pub randomness: [u8; 32],
+    pub vrf_used: bool,
 }
 
+/// Private (no members) for the whole league. Committed to the base layer only when the final
+/// round settles, so no close time or seed is public before then.
+#[account]
+#[derive(InitSpace)]
+pub struct Secret {
+    pub league: Pubkey,
+    pub bump: u8,
+    /// The round in progress.
+    pub current: RoundSecret,
+    /// Finished rounds, by round index.
+    pub history: [RoundSecret; MAX_ROUNDS as usize],
+}
+
+/// One player's closing position and nonce for a finished round.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Default, InitSpace)]
+pub struct RoundPos {
+    pub nonce: [u8; 32],
+    /// The nonce was committed for this round's epoch.
+    pub committed: bool,
+    /// False when the round was voided.
+    pub scored: bool,
+    pub side: i8,
+    pub leverage: u8,
+    pub entry_price: i64,
+    /// Return for the round in basis points.
+    pub ret_bps: i64,
+}
+
+/// Private to its owner for the whole league. Committed to the base layer only when the final
+/// round settles, so no position is public before the league is over.
 #[account]
 #[derive(InitSpace)]
 pub struct Entry {
     pub league: Pubkey,
     pub player: Pubkey,
     pub bump: u8,
-    /// Round this position belongs to; a mismatch means the position is stale and is reset.
+    /// Round the live fields below belong to; a mismatch means they are stale and are reset.
     pub round: u8,
-    // ---- hidden while the round is live ----
     /// Private nonce committed for the current epoch. Immutable once committed.
     pub nonce: [u8; 32],
     pub nonce_epoch: u16,
@@ -127,7 +165,19 @@ pub struct Entry {
     pub entry_price: i64,
     /// Realised return this round in basis points (marked at each adjustment).
     pub ret_bps: i64,
-    // ---- record, revealed at settlement ----
+    /// Closing position and nonce of every finished round.
+    pub history: [RoundPos; MAX_ROUNDS as usize],
+    /// Set when this entry is committed during the final reveal.
+    pub revealed: bool,
+}
+
+/// Public score card, committed after every round. Holds scores only: no position, no nonce.
+#[account]
+#[derive(InitSpace)]
+pub struct Card {
+    pub league: Pubkey,
+    pub player: Pubkey,
+    pub bump: u8,
     pub rounds_scored: u8,
     pub sum_ret_bps: i64,
     pub sum_sq_ret_bps: i64,

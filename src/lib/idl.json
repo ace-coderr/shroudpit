@@ -1,5 +1,5 @@
 {
-  "address": "69VymhYdXWsBVy9h5D1xdM6MU7DbBXF7rQHvGoUcW6K9",
+  "address": "E8DAQoqcTTi4TNYM2Q2MEzy3rxKHfqzBoMKrCPVbCsEF",
   "metadata": {
     "name": "shroudpit",
     "version": "0.1.0",
@@ -28,7 +28,7 @@
         {
           "name": "vrf_program_identity",
           "signer": true,
-          "address": "9cSb2quoZsqmAVaqNapwR7PvD5fJXs5jw9tV6wJqjgCP"
+          "address": "Fxhxckhpw1TwdDxH9ij2HTnkmFxVuKCGS2VZ5RKLQJRB"
         },
         {
           "name": "league",
@@ -497,7 +497,7 @@
     {
       "name": "delegate_entry",
       "docs": [
-        "Delegate the caller's entry to the TEE validator so the position stays private."
+        "Delegate the caller's entry and score card to the TEE validator."
       ],
       "discriminator": [
         14,
@@ -542,38 +542,38 @@
             "program": {
               "kind": "const",
               "value": [
-                76,
-                119,
-                216,
-                248,
-                153,
-                60,
-                193,
-                156,
-                51,
-                220,
-                163,
-                153,
-                73,
-                67,
-                149,
-                80,
-                61,
-                193,
-                90,
-                201,
-                249,
-                146,
-                250,
-                50,
-                110,
-                228,
-                210,
-                149,
-                69,
-                82,
                 195,
-                104
+                0,
+                191,
+                99,
+                19,
+                147,
+                60,
+                86,
+                91,
+                245,
+                106,
+                38,
+                178,
+                168,
+                167,
+                202,
+                193,
+                57,
+                191,
+                166,
+                229,
+                55,
+                225,
+                140,
+                253,
+                133,
+                174,
+                130,
+                19,
+                36,
+                111,
+                96
               ]
             }
           }
@@ -676,12 +676,168 @@
           }
         },
         {
+          "name": "buffer_card",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "card"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                195,
+                0,
+                191,
+                99,
+                19,
+                147,
+                60,
+                86,
+                91,
+                245,
+                106,
+                38,
+                178,
+                168,
+                167,
+                202,
+                193,
+                57,
+                191,
+                166,
+                229,
+                55,
+                225,
+                140,
+                253,
+                133,
+                174,
+                130,
+                19,
+                36,
+                111,
+                96
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_card",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "card"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_card",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "card"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "card",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  97,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league"
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
           "name": "validator",
           "address": "MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo"
         },
         {
           "name": "owner_program",
-          "address": "69VymhYdXWsBVy9h5D1xdM6MU7DbBXF7rQHvGoUcW6K9"
+          "address": "E8DAQoqcTTi4TNYM2Q2MEzy3rxKHfqzBoMKrCPVbCsEF"
         },
         {
           "name": "delegation_program",
@@ -739,38 +895,38 @@
             "program": {
               "kind": "const",
               "value": [
-                76,
-                119,
-                216,
-                248,
-                153,
-                60,
-                193,
-                156,
-                51,
-                220,
-                163,
-                153,
-                73,
-                67,
-                149,
-                80,
-                61,
-                193,
-                90,
-                201,
-                249,
-                146,
-                250,
-                50,
-                110,
-                228,
-                210,
-                149,
-                69,
-                82,
                 195,
-                104
+                0,
+                191,
+                99,
+                19,
+                147,
+                60,
+                86,
+                91,
+                245,
+                106,
+                38,
+                178,
+                168,
+                167,
+                202,
+                193,
+                57,
+                191,
+                166,
+                229,
+                55,
+                225,
+                140,
+                253,
+                133,
+                174,
+                130,
+                19,
+                36,
+                111,
+                96
               ]
             }
           }
@@ -874,38 +1030,38 @@
             "program": {
               "kind": "const",
               "value": [
-                76,
-                119,
-                216,
-                248,
-                153,
-                60,
-                193,
-                156,
-                51,
-                220,
-                163,
-                153,
-                73,
-                67,
-                149,
-                80,
-                61,
-                193,
-                90,
-                201,
-                249,
-                146,
-                250,
-                50,
-                110,
-                228,
-                210,
-                149,
-                69,
-                82,
                 195,
-                104
+                0,
+                191,
+                99,
+                19,
+                147,
+                60,
+                86,
+                91,
+                245,
+                106,
+                38,
+                178,
+                168,
+                167,
+                202,
+                193,
+                57,
+                191,
+                166,
+                229,
+                55,
+                225,
+                140,
+                253,
+                133,
+                174,
+                130,
+                19,
+                36,
+                111,
+                96
               ]
             }
           }
@@ -991,7 +1147,7 @@
         },
         {
           "name": "owner_program",
-          "address": "69VymhYdXWsBVy9h5D1xdM6MU7DbBXF7rQHvGoUcW6K9"
+          "address": "E8DAQoqcTTi4TNYM2Q2MEzy3rxKHfqzBoMKrCPVbCsEF"
         },
         {
           "name": "delegation_program",
@@ -1075,6 +1231,92 @@
               }
             ]
           }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "finish_league",
+      "docs": [
+        "Final reveal, step 2 of 2. Permissionless, once every entry has been revealed: commits and",
+        "undelegates the league, the secret (every round's close time and seed) and the score cards."
+      ],
+      "discriminator": [
+        183,
+        205,
+        217,
+        50,
+        216,
+        87,
+        121,
+        104
+      ],
+      "accounts": [
+        {
+          "name": "league",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  101,
+                  97,
+                  103,
+                  117,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league.creator",
+                "account": "League"
+              },
+              {
+                "kind": "account",
+                "path": "league.id",
+                "account": "League"
+              }
+            ]
+          }
+        },
+        {
+          "name": "secret",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  99,
+                  114,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league"
+              }
+            ]
+          }
+        },
+        {
+          "name": "magic_fee_vault",
+          "writable": true,
+          "address": "EUJssY6kG5fb35s9Lc6jyh6joRPo2e2MhJqoKCqcTt5b"
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magic_context",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
         }
       ],
       "args": []
@@ -1441,6 +1683,31 @@
           }
         },
         {
+          "name": "card",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  97,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league"
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
           "name": "system_program",
           "address": "11111111111111111111111111111111"
         }
@@ -1670,6 +1937,69 @@
           }
         }
       ]
+    },
+    {
+      "name": "reveal_entries",
+      "docs": [
+        "Final reveal, step 1 of 2. Permissionless. Commits and undelegates up to `REVEAL_CHUNK`",
+        "entries, publishing their positions and nonces. Call repeatedly until every entry is out."
+      ],
+      "discriminator": [
+        99,
+        109,
+        121,
+        159,
+        13,
+        199,
+        0,
+        18
+      ],
+      "accounts": [
+        {
+          "name": "league",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  101,
+                  97,
+                  103,
+                  117,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "league.creator",
+                "account": "League"
+              },
+              {
+                "kind": "account",
+                "path": "league.id",
+                "account": "League"
+              }
+            ]
+          }
+        },
+        {
+          "name": "magic_fee_vault",
+          "writable": true,
+          "address": "EUJssY6kG5fb35s9Lc6jyh6joRPo2e2MhJqoKCqcTt5b"
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magic_context",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": []
     },
     {
       "name": "set_position",
@@ -1998,6 +2328,19 @@
   ],
   "accounts": [
     {
+      "name": "Card",
+      "discriminator": [
+        166,
+        250,
+        46,
+        230,
+        152,
+        63,
+        140,
+        182
+      ]
+    },
+    {
       "name": "Entry",
       "discriminator": [
         63,
@@ -2152,11 +2495,73 @@
       "code": 6022,
       "name": "NotWinner",
       "msg": "only the league winner can claim the trophy"
+    },
+    {
+      "code": 6023,
+      "name": "EntryRevealed",
+      "msg": "this entry was already revealed"
+    },
+    {
+      "code": 6024,
+      "name": "ChunkTooLarge",
+      "msg": "too many entries for one reveal"
+    },
+    {
+      "code": 6025,
+      "name": "NotAllRevealed",
+      "msg": "not every entry has been revealed yet"
     }
   ],
   "types": [
     {
+      "name": "Card",
+      "docs": [
+        "Public score card, committed after every round. Holds scores only: no position, no nonce."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "league",
+            "type": "pubkey"
+          },
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "rounds_scored",
+            "type": "u8"
+          },
+          {
+            "name": "sum_ret_bps",
+            "type": "i64"
+          },
+          {
+            "name": "sum_sq_ret_bps",
+            "type": "i64"
+          },
+          {
+            "name": "last_ret_bps",
+            "type": "i64"
+          },
+          {
+            "name": "rating",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
       "name": "Entry",
+      "docs": [
+        "Private to its owner for the whole league. Committed to the base layer only when the final",
+        "round settles, so no position is public before the league is over."
+      ],
       "type": {
         "kind": "struct",
         "fields": [
@@ -2175,7 +2580,7 @@
           {
             "name": "round",
             "docs": [
-              "Round this position belongs to; a mismatch means the position is stale and is reset."
+              "Round the live fields below belong to; a mismatch means they are stale and are reset."
             ],
             "type": "u8"
           },
@@ -2218,24 +2623,27 @@
             "type": "i64"
           },
           {
-            "name": "rounds_scored",
-            "type": "u8"
+            "name": "history",
+            "docs": [
+              "Closing position and nonce of every finished round."
+            ],
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "RoundPos"
+                  }
+                },
+                8
+              ]
+            }
           },
           {
-            "name": "sum_ret_bps",
-            "type": "i64"
-          },
-          {
-            "name": "sum_sq_ret_bps",
-            "type": "i64"
-          },
-          {
-            "name": "last_ret_bps",
-            "type": "i64"
-          },
-          {
-            "name": "rating",
-            "type": "i64"
+            "name": "revealed",
+            "docs": [
+              "Set when this entry is committed during the final reveal."
+            ],
+            "type": "bool"
           }
         ]
       }
@@ -2343,30 +2751,86 @@
               "Set when the league finishes: highest rating (ties: lowest key)."
             ],
             "type": "pubkey"
+          },
+          {
+            "name": "revealed_count",
+            "docs": [
+              "Entries committed and undelegated so far during the final reveal."
+            ],
+            "type": "u8"
           }
         ]
       }
     },
     {
-      "name": "Secret",
+      "name": "RoundPos",
       "docs": [
-        "Private (no members) while the round is live; revealed when committed at settlement so the",
-        "derivation of the close time can be audited."
+        "One player's closing position and nonce for a finished round."
       ],
       "type": {
         "kind": "struct",
         "fields": [
           {
-            "name": "league",
-            "type": "pubkey"
+            "name": "nonce",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           },
           {
-            "name": "bump",
+            "name": "committed",
+            "docs": [
+              "The nonce was committed for this round's epoch."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "scored",
+            "docs": [
+              "False when the round was voided."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "side",
+            "type": "i8"
+          },
+          {
+            "name": "leverage",
             "type": "u8"
           },
           {
-            "name": "vrf_used",
-            "type": "bool"
+            "name": "entry_price",
+            "type": "i64"
+          },
+          {
+            "name": "ret_bps",
+            "docs": [
+              "Return for the round in basis points."
+            ],
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RoundSecret",
+      "docs": [
+        "Everything that fixes one round's close time. Kept for every round so each can be audited after",
+        "the league ends."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "epoch",
+            "type": "u16"
+          },
+          {
+            "name": "started_at",
+            "type": "i64"
           },
           {
             "name": "close_at",
@@ -2403,6 +2867,57 @@
               "array": [
                 "u8",
                 32
+              ]
+            }
+          },
+          {
+            "name": "vrf_used",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Secret",
+      "docs": [
+        "Private (no members) for the whole league. Committed to the base layer only when the final",
+        "round settles, so no close time or seed is public before then."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "league",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "current",
+            "docs": [
+              "The round in progress."
+            ],
+            "type": {
+              "defined": {
+                "name": "RoundSecret"
+              }
+            }
+          },
+          {
+            "name": "history",
+            "docs": [
+              "Finished rounds, by round index."
+            ],
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "RoundSecret"
+                  }
+                },
+                8
               ]
             }
           }

@@ -48,4 +48,10 @@ pub enum ShroudError {
     WrongSecret,
     #[msg("only the league winner can claim the trophy")]
     NotWinner,
+    #[msg("this entry was already revealed")]
+    EntryRevealed,
+    #[msg("too many entries for one reveal")]
+    ChunkTooLarge,
+    #[msg("not every entry has been revealed yet")]
+    NotAllRevealed,
 }

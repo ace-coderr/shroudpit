@@ -1,9 +1,9 @@
-import { Keypair, PublicKey, Transaction } from '@solana/web3.js'
+import { ComputeBudgetProgram, Keypair, PublicKey, Transaction } from '@solana/web3.js'
 import type { Connection } from '@solana/web3.js'
 import BN from 'bn.js'
 import nacl from 'tweetnacl'
 import {
-  baseConnection, entryPda, fetchEntries, permissionPda, programFor, secretPda, sortKeys,
+  baseConnection, cardPda, entryPda, fetchEntries, permissionPda, programFor, secretPda, sortKeys,
 } from './chain'
 import { TEE_VALIDATOR } from './config'
 import { sendBase, sendTee, teeSession } from './session'
@@ -134,6 +134,29 @@ export async function setPosition(signer: Signer, league: PublicKey, feed: Publi
   return sendTee(connection, signer, tx)
 }
 
+/** Final reveal: commit and undelegate up to 4 entries. Anyone may call it. */
+export async function revealEntries(signer: Signer | Keypair, connection: Connection, league: PublicKey, start: number) {
+  const keys = sortKeys((await fetchEntries(league)).map((e) => e.key)).slice(start, start + 4)
+  const tx = await programFor(connection, signer.publicKey)
+    .methods.revealEntries()
+    .accountsPartial({ league })
+    .remainingAccounts(keys.map((pubkey) => ({ pubkey, isSigner: false, isWritable: true })))
+    .transaction()
+  return sendTee(connection, signer, withBudget(tx))
+}
+
+/** Final reveal, last step: commit and undelegate the league, the secret and the score cards. */
+export async function finishLeague(signer: Signer | Keypair, connection: Connection, league: PublicKey) {
+  const entries = await fetchEntries(league)
+  const cards = sortKeys(entries.map((e) => e.key)).map((k) => entries.find((e) => e.key.equals(k))!.player)
+  const tx = await programFor(connection, signer.publicKey)
+    .methods.finishLeague()
+    .accountsPartial({ league, secret: secretPda(league) })
+    .remainingAccounts(cards.map((p) => ({ pubkey: cardPda(league, p), isSigner: false, isWritable: true })))
+    .transaction()
+  return sendTee(connection, signer, withBudget(tx))
+}
+
 /** The winner of a finished league claims the trophy token (about 0.0026 SOL of rent). */
 export async function claimTrophy(signer: Signer, league: PublicKey) {
   const tx = await programFor(baseConnection, signer.publicKey)
@@ -170,4 +193,10 @@ export async function helperConnection(): Promise<Connection> {
     signMessage: async (m) => nacl.sign.detached(m, kp.secretKey),
   }
   return (await teeSession(signer)).connection
+}
+
+/** Settlement and the final reveal touch many accounts: ask for the full compute budget. */
+function withBudget(tx: Transaction) {
+  tx.instructions.unshift(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }))
+  return tx
 }

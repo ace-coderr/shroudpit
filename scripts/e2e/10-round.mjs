@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction } from '@solana/web3.js'
 import BN from 'bn.js'
 import {
-  BASE_RPC, SOL_USD_FEED, TEE_VALIDATOR, decode, entryPda, explorerBase,
+  BASE_RPC, PROGRAM_ID, SOL_USD_FEED, TEE_VALIDATOR, cardPda, decode, entryPda, explorerBase, withCU,
   explorerTee, leaguePda, loadKeypair, loadState, permissionPda, programFor, saveState, send, sleep, sortKeys,
   teeConnection,
 } from './lib.mjs'
@@ -21,7 +21,7 @@ const DIR = process.env.KEYPAIR_DIR
 const idl = JSON.parse(readFileSync('program/target/idl/shroudpit.json', 'utf8'))
 
 // ---- wallets (keypairs stay outside the repo) ----
-const files = ['shroudpit-devnet.json', 'shroudpit-p2.json', 'shroudpit-p3.json', 'shroudpit-p4.json']
+const files = ['shroudpit-devnet.json', ...[2, 3, 4, 5, 6, 7, 8].map((i) => `shroudpit-p${i}.json`)]
 for (const f of files.slice(0, N)) {
   const p = join(DIR, f)
   if (!existsSync(p)) writeFileSync(p, JSON.stringify(Array.from(Keypair.generate().secretKey)), { mode: 0o600 })
@@ -56,8 +56,9 @@ for (const w of wallets.slice(1)) {
 // ---- base layer: league + players ----
 const leagueId = Date.now()
 const league = leaguePda(creator.publicKey, leagueId)
-const secret = PublicKey.findProgramAddressSync([Buffer.from('secret'), league.toBuffer()], idl.address ? new PublicKey(idl.address) : undefined)[0]
+const secret = PublicKey.findProgramAddressSync([Buffer.from('secret'), league.toBuffer()], PROGRAM_ID)[0]
 const entries = Object.fromEntries(wallets.map((w) => [w.publicKey.toBase58(), entryPda(league, w.publicKey)]))
+const cards = Object.fromEntries(wallets.map((w) => [w.publicKey.toBase58(), cardPda(league, w.publicKey)]))
 console.log(`\nleague ${league.toBase58()} secret ${secret.toBase58()} | wallets ${wallets.map((w) => short(w.publicKey)).join(', ')} | close_mode ${CLOSE_MODE} | rounds ${ROUNDS}`)
 Object.assign(out, { league: league.toBase58(), secret: secret.toBase58(), leagueId, wallets: wallets.map((w) => w.publicKey.toBase58()) })
 
@@ -125,6 +126,12 @@ out.privacy = {
 const readLeague = async () => decode(progOf(creator), 'league', (await teeC.getAccountInfo(league)).data)
 const sortedEntries = sortKeys(Object.values(entries))
 const remaining = sortedEntries.map((pubkey) => ({ pubkey, isSigner: false, isWritable: true }))
+// settlement takes [entry, card] pairs in ascending entry-key order
+const playerOfEntry = (key) => wallets.find((w) => entries[w.publicKey.toBase58()].equals(key))
+const remainingPairs = sortedEntries.flatMap((pubkey) => [
+  { pubkey, isSigner: false, isWritable: true },
+  { pubkey: cards[playerOfEntry(pubkey).publicKey.toBase58()], isSigner: false, isWritable: true },
+])
 
 for (let round = 0; round < ROUNDS; round++) {
   console.log(`\n===== round ${round} =====`)
@@ -148,7 +155,7 @@ for (let round = 0; round < ROUNDS; round++) {
   // lock in (anyone may; the creator pays here)
   const lockIx = (who) => progOf(who).methods
     .lockIn().accountsPartial({ payer: who.publicKey, league, secret })
-    .remainingAccounts(remaining.map((r) => ({ ...r, isWritable: false }))).transaction()
+    .remainingAccounts(remaining.map((r) => ({ ...r, isWritable: false }))).transaction().then((t) => withCU(t))
   let lockSig
   try {
     lockSig = await sendTee(actor, await lockIx(actor))
@@ -188,8 +195,8 @@ for (let round = 0; round < ROUNDS; round++) {
   // positions: each wallet sets a position at the live price
   const sides = [1, -1, 1, -1]
   for (const [i, w] of wallets.entries()) {
-    link(`set_position ${short(w.publicKey)} ${sides[i] > 0 ? 'long' : 'short'} x${2 + i}`, await sendTee(w, await progOf(w).methods
-      .setPosition(sides[i], 2 + i).accountsPartial({
+    link(`set_position ${short(w.publicKey)} ${sides[i % sides.length] > 0 ? 'long' : 'short'} x${1 + (i % 5)}`, await sendTee(w, await progOf(w).methods
+      .setPosition(sides[i % sides.length], 1 + (i % 5)).accountsPartial({
         player: w.publicKey, league, secret, entry: entries[w.publicKey.toBase58()],
         permission: permissionPda(entries[w.publicKey.toBase58()]), priceFeed: SOL_USD_FEED,
       }).transaction()), true)
@@ -258,7 +265,7 @@ for (let round = 0; round < ROUNDS; round++) {
       try {
         const sig = await sendTee(actor, await progOf(actor).methods
           .settleAndReveal().accountsPartial({ league, secret, priceFeed: SOL_USD_FEED })
-          .remainingAccounts(remaining).transaction())
+          .remainingAccounts(remainingPairs).transaction().then((t) => withCU(t)))
         link(`settle_and_reveal (r${round}) by ${HELPER ? 'unfunded key' : 'creator'}`, sig, true)
         if (HELPER) out.helper.settle = 'ok'
       } catch (e) {
@@ -274,41 +281,87 @@ for (let round = 0; round < ROUNDS; round++) {
   }
   console.log(`  settled by: ${settledBy}`)
   out[`settledBy${round}`] = settledBy
+  if (round === ROUNDS - 1) {
+    // final reveal: entries in chunks of 4, then the league itself
+    const CHUNK = 4
+    for (let k = 0; k < 40; k++) {
+      const l2 = await readLeague().catch(() => null)
+      if (!l2) break
+      if (l2.status === 4) break
+      if (l2.status === 6 && l2.revealedCount < l2.playerCount) {
+        const start = l2.revealedCount
+        const chunk = sortedEntries.slice(start, start + CHUNK).map((pubkey) => ({ pubkey, isSigner: false, isWritable: true }))
+        try {
+          const sig = await sendTee(actor, await progOf(actor).methods.revealEntries().accountsPartial({ league }).remainingAccounts(chunk).transaction().then((t) => withCU(t)))
+          link(`reveal_entries [${start}..${start + chunk.length})`, sig, true)
+        } catch (e) { console.log('  reveal_entries error:', e.message) }
+      } else if (l2.status === 6) {
+        const cardMetas = sortedEntries.map((key) => ({ pubkey: cards[playerOfEntry(key).publicKey.toBase58()], isSigner: false, isWritable: true }))
+        try {
+          const sig = await sendTee(actor, await progOf(actor).methods.finishLeague().accountsPartial({ league, secret }).remainingAccounts(cardMetas).transaction().then((t) => withCU(t)))
+          link('finish_league', sig, true)
+        } catch (e) { console.log('  finish_league error:', e.message) }
+      }
+      await sleep(3000)
+    }
+  }
   await sleep(6000)
+  if (round < ROUNDS - 1) {
+    await sleep(6000)
+    const lb0 = decode(baseProg, 'league', (await base.getAccountInfo(league)).data)
+    const hidden = []
+    for (const w of wallets) {
+      const e = decode(baseProg, 'entry', (await base.getAccountInfo(entries[w.publicKey.toBase58()])).data)
+      const c = decode(baseProg, 'card', (await base.getAccountInfo(cards[w.publicKey.toBase58()])).data)
+      hidden.push({ player: short(w.publicKey), base_side: e.side, base_history_scored: e.history[round].scored, card_rounds_scored: c.roundsScored, card_rating: c.rating.toString() })
+    }
+    console.log(`  after round ${round} settled (base layer): league status=${lb0.status} round=${lb0.round}; entries must show NO position, cards show scores:`)
+    console.table(hidden)
+    ;(out.betweenRounds ??= []).push({ round, allPositionsHidden: hidden.every((h) => h.base_side === 0 && !h.base_history_scored), cardsScored: hidden.every((h) => h.card_rounds_scored === round + 1) })
+  }
 }
 
-// ---- reveal & audit: read the committed state from the BASE layer ----
+// ---- reveal & audit (base layer), after the FINAL round ----
 console.log('\n===== reveal & audit (base layer) =====')
 await sleep(8000)
 const lb = decode(baseProg, 'league', (await base.getAccountInfo(league)).data)
 const sb = decode(baseProg, 'secret', (await base.getAccountInfo(secret)).data)
-console.log(`league status=${lb.status} (3 = Between, 4 = Finished) round=${lb.round} winner=${lb.winner.toBase58()} settle_price=${lb.settlePrice.toString()}`)
+console.log(`league status=${lb.status} (4 = Finished) rounds=${lb.round} winner=${lb.winner.toBase58()}`)
+const entryData = {}
 const rows = []
 for (const w of wallets) {
-  const e = decode(baseProg, 'entry', (await base.getAccountInfo(entries[w.publicKey.toBase58()])).data)
-  rows.push({ player: short(w.publicKey), side: e.side, lev: e.leverage, entry_price: e.entryPrice.toString(), last_ret_bps: e.lastRetBps.toString(), rating: e.rating.toString(), nonce: Buffer.from(e.nonce).toString('hex').slice(0, 12) + '…' })
-  out[`entry_${short(w.publicKey)}`] = { nonce: Buffer.from(e.nonce).toString('hex'), epoch: e.nonceEpoch }
+  const k = w.publicKey.toBase58()
+  const e = decode(baseProg, 'entry', (await base.getAccountInfo(entries[k])).data)
+  const c = decode(baseProg, 'card', (await base.getAccountInfo(cards[k])).data)
+  entryData[k] = e
+  rows.push({ player: short(w.publicKey), rounds: c.roundsScored, last_ret_bps: c.lastRetBps.toString(), rating: c.rating.toString() })
 }
 console.table(rows)
 
-// independent recomputation of the close-time derivation from what was revealed
 const sha = (...bufs) => createHash('sha256').update(Buffer.concat(bufs)).digest()
-const epochLe = Buffer.alloc(2); epochLe.writeUInt16LE(lb.epoch)
-const slotLe = Buffer.alloc(8); slotLe.writeBigUInt64LE(BigInt(sb.lockSlot.toString()))
-const parts = [league.toBuffer(), epochLe, slotLe]
-for (const key of sortedEntries) {
-  const w = wallets.find((x) => entries[x.publicKey.toBase58()].equals(key))
-  const e = decode(baseProg, 'entry', (await base.getAccountInfo(key)).data)
-  if (e.nonceEpoch === lb.epoch) parts.push(w.publicKey.toBuffer(), Buffer.from(e.nonce))
+const audit = []
+for (let r = 0; r < lb.round; r++) {
+  const rs = sb.history[r]
+  const epochLe = Buffer.alloc(2); epochLe.writeUInt16LE(rs.epoch)
+  const slotLe = Buffer.alloc(8); slotLe.writeBigUInt64LE(BigInt(rs.lockSlot.toString()))
+  const parts = [league.toBuffer(), epochLe, slotLe]
+  const positions = []
+  for (const key of sortedEntries) {
+    const w = playerOfEntry(key)
+    const h = entryData[w.publicKey.toBase58()].history[r]
+    if (h.committed) parts.push(w.publicKey.toBuffer(), Buffer.from(h.nonce))
+    positions.push({ player: short(w.publicKey), side: h.side, lev: h.leverage, entry_price: h.entryPrice.toString(), ret_bps: h.retBps.toString(), scored: h.scored })
+  }
+  const baseSeed = sha(...parts)
+  const okBase = baseSeed.equals(Buffer.from(rs.baseSeed))
+  const finalSeed = rs.vrfUsed ? sha(Buffer.from(rs.baseSeed), Buffer.from(rs.randomness)) : baseSeed
+  const span = BigInt(lb.maxSecs - lb.minSecs + 1)
+  const expectedClose = BigInt(rs.startedAt.toString()) + BigInt(lb.minSecs) + (finalSeed.readBigUInt64LE(0) % span)
+  const okClose = expectedClose.toString() === rs.closeAt.toString()
+  console.log(`round ${r}: base seed matches ${okBase} | close_at matches ${okClose} | vrf_used ${rs.vrfUsed}`)
+  console.table(positions)
+  audit.push({ round: r, baseSeedMatches: okBase, closeMatches: okClose, vrfUsed: rs.vrfUsed })
 }
-const baseSeed = sha(...parts)
-const okBase = baseSeed.equals(Buffer.from(sb.baseSeed))
-console.log('recomputed base seed matches the on-chain secret.base_seed:', okBase)
-const finalSeed = sb.vrfUsed ? sha(Buffer.from(sb.baseSeed), Buffer.from(sb.randomness)) : baseSeed
-const span = BigInt(lb.maxSecs - lb.minSecs + 1)
-const offset = finalSeed.readBigUInt64LE(0) % span
-const expectedClose = BigInt(lb.roundStartedAt.toString()) + BigInt(lb.minSecs) + offset
-console.log('recomputed close_at', expectedClose.toString(), 'vs on-chain', sb.closeAt.toString(), '=>', expectedClose.toString() === sb.closeAt.toString())
-console.log('vrf_used:', sb.vrfUsed)
-out.audit = { baseSeedMatches: okBase, closeMatches: expectedClose.toString() === sb.closeAt.toString(), vrfUsed: sb.vrfUsed, closeAt: sb.closeAt.toString() }
+out.audit = audit
+out.finalStatus = lb.status
 saveState(state)

@@ -19,15 +19,14 @@ Devnet only. No real funds are involved.
 
 ## Accounts
 
-| Account | Visibility while a round is live | Holds |
+| Account | Visibility while the league runs | Holds |
 | --- | --- | --- |
-| `League` | Public inside the rollup | creator, rounds, phase, nonce deadline, player count, pinned price feed |
-| `Secret` | Readable by **nobody** (private, no members) | hidden close time, lock-in slot, base seed, VRF output |
-| `Entry` (one per player) | Readable only by its owner | position, private nonce, running rating |
+| `League` | Public inside the rollup, committed after every round | creator, rounds, phase, nonce deadline, player count, pinned price feed, winner |
+| `Card` (one per player) | Public, committed after every round | rounds scored, running sums, last return, **rating**. Scores only: no position, no nonce |
+| `Entry` (one per player) | Readable only by its owner; **not committed until the league ends** | current position, private nonce, and the closing position and nonce of every finished round |
+| `Secret` | Readable by **nobody** (private, no members); **not committed until the league ends** | every round's close time, lock-in slot, base seed and VRF output |
 
-When a round settles, the rollup commits `League`, `Secret` and every `Entry` to Solana. Only then does their content become public, which is what the Reveal & Audit page shows.
-
-The split between `League` and `Secret` exists so clients can follow the phase (who needs to seal a nonce, when positions are open) without ever being able to read the close time.
+The split between `League` and `Secret` exists so clients can follow the phase (who needs to seal a nonce, when positions are open) without ever being able to read a close time. The split between `Card` and `Entry` exists so scores can be public every round while positions stay sealed until the whole league is over.
 
 ## A round
 
@@ -36,7 +35,8 @@ The split between `League` and `Secret` exists so clients can follow the phase (
 3. **Nonce phase.** The creator opens a round. Every player commits a random 32-byte nonce, privately. A nonce is immutable once committed.
 4. **Lock-in.** Once everyone committed (or the deadline passed with at least two nonces), anyone locks the round in and the close time is derived.
 5. **Live.** Players set and adjust positions at live oracle prices. `set_position` is refused once the hidden close has passed.
-6. **Settle and reveal.** Anyone can call `settle_and_reveal`, from any open desk. Positions are marked to the settlement price, ratings update, and the rollup commits. The last round also undelegates everything.
+6. **Settle.** Anyone can call `settle_and_reveal`, from any open desk. Positions are marked to the settlement price, ratings update on the public cards, and the rollup commits only the league and the cards. Entries and the secret stay sealed.
+7. **Final reveal.** After the last round the league is **Finishing**: any caller commits and undelegates the entries in chunks of four (`reveal_entries`), then `finish_league` commits the league, the secret and the cards and the league is **Finished**. Only now do positions, nonces and close times become public.
 
 ## How the close time is derived
 
@@ -49,7 +49,7 @@ base seed = sha256(league, epoch, slot at lock-in, every committed (wallet, nonc
 - **Default (`Nonces + slot`).** `close = start + min + (seed mod (max - min + 1))`.
 - **With VRF (`Nonces + slot + VRF`).** The program requests randomness and, if the output arrives within 20 seconds, uses `seed = sha256(base seed, vrf output)`. If it does not arrive in time, `finalize_without_vrf` derives the close from the base seed alone. A VRF callback that arrives after the close was derived is rejected, so an output cannot be replayed or injected.
 
-Nonces must be committed **before** lock-in: `commit_nonce` is refused once the phase closes, a nonce cannot be changed once committed, and each round needs fresh nonces (an epoch counter makes old nonces unusable). Nonces and the base seed are revealed at settlement, so anyone can recompute the close time; the Audit page does exactly that in the browser.
+Nonces must be committed **before** lock-in: `commit_nonce` is refused once the phase closes, a nonce cannot be changed once committed, and each round needs fresh nonces (an epoch counter makes old nonces unusable). Nonces and each round's base seed are revealed when the league finishes, so anyone can recompute every round's close time **after the final round**; the Audit page does exactly that in the browser.
 
 ### Limits of the nonce-based derivation
 
@@ -68,7 +68,8 @@ Nonces must be committed **before** lock-in: `commit_nonce` is refused once the 
 | Base-layer copy of a delegated account | Stale zeroed state from before delegation, never a live position |
 | A position transaction fetched by a non-member | Returns an empty shell: zero account keys, no instruction data (so no side or leverage), zero log lines, no balances. Verified on devnet with a brand-new key. The owner's own fetch of that transaction was redacted the same way, so the owner reads their position from their `Entry`, not from history |
 | Join and delegate transactions | **Public on devnet**: who joined which league is visible. Positions are not |
-| Settlement commit | Reveals each player's closing position and nonce **for that round**, after it closed. This enables audit but also lets later rounds copy an earlier pattern. Keeping positions sealed until the final round is a possible future option |
+| Settlement commit after a non-final round | Publishes the public score cards and the league only. A verified devnet 3-round league showed every entry still holding no position on the base layer after rounds 1 and 2 |
+| Final reveal | Publishes every round's positions, nonces and close times, after the league is over, so nothing can be copied while it is running |
 
 ### Rank-only standings
 
@@ -102,15 +103,14 @@ When a league has finished, the winner can claim an owned devnet asset with `cla
 
 ## Reveal policy
 
-Today each settled round commits every entry, which reveals that round's closing positions (and nonces) once the round has closed. That makes audit simple, but a later round can copy a pattern from an earlier one.
+Positions, nonces and close times of **every** round are published only after the final round. Scores are public after every round. A later round therefore cannot copy an earlier one, because nothing about earlier positions is public while the league runs.
 
-**Option: reveal positions only after the final round, scores stay public every round.** Estimated cost:
+Costs, measured on devnet: one extra account per player (the public card, about 0.0016 SOL of rent) and a larger entry (about 540 bytes, because it stores every round's closing position and nonce). The program grew by about 50 KB.
 
-- **Design.** Split `Entry` into a private `Entry` (position history for every round, nonce) that is committed only by the final `commit_and_undelegate`, and a public `Card` (rounds scored, sums, last return, rating) committed every round.
-- **On-chain cost.** One extra account per player (about 0.0013 SOL rent each, paid at join) plus about 0.0015 SOL more rent for the history inside `Entry`. One more delegation per player in the join transaction. A settlement commits `2N + 2` accounts instead of `N + 2` (18 for eight players), which fits in a transaction but adds compute.
-- **Work.** About 3 to 5 KB more program, one more upgrade cycle (a temporary 2.4 SOL buffer, refunded), and changes to join, settlement, `set_position`, the Audit page and the scripts. Moderate risk, mostly around transaction size and compute on the largest leagues.
-- **Side effects.** Nonces and per-round positions stay hidden until the league ends, so the close-time recomputation can only be done after the final round. A league that is abandoned never reveals.
-- **Recommendation.** Not too costly, and it closes the main copying leak, so it is worth building if multi-round leagues are part of the demo. If it is not built, run demo leagues as single-round: with one round the reveal happens only after the league is over and there is nothing left to copy.
+**The commit-size limit and the chunked reveal.** The validator rejects a commit bundle whose account data totals more than roughly 2.7 KB (measured by simulation on a real 8-player league: the 8 entries alone, about 4.3 KB, were refused; 8 score cards plus the league and the secret, 10 accounts, were accepted; so it is size, not account count). One commit of everything is therefore impossible for large leagues, and the final reveal is split: entries in chunks of four, then the league, secret and cards. Eight players need two chunks and one finish call.
+
+**Side effects.** The close-time recomputation can only be done after the final round. A league that is abandoned before its final round never reveals, and its entries stay delegated. Settlement can still void a round but never skips the final reveal.
+
 ## Prices
 
 Positions are marked to the MagicBlock real-time oracle (Pyth Lazer data, updated roughly every second inside the rollup). The program reads the feed account directly and checks that it is the pinned feed address, owned by the oracle program, has a positive price, and is fresh: at most 5 seconds old when a position is set, and published inside the settlement window when settling. The base-layer copy of the feed is not used; it is stale.

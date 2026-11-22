@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { PublicKey } from '@solana/web3.js'
 import {
-  commitNonce, finalizeWithoutVrf, helperConnection, helperKeypair, lockIn, sealEntry, setPosition, settle,
+  commitNonce, finalizeWithoutVrf, finishLeague, helperConnection, helperKeypair, lockIn, revealEntries, sealEntry, setPosition, settle,
 } from '../lib/actions'
 import {
   baseConnection, entryPda, fetchEntries, fetchQuote, permissionPda, toEntry,
@@ -132,7 +132,8 @@ export default function Desk() {
       const need =
         (l.status === 5 && l.nonceCount >= 2 && (l.nonceCount === l.playerCount || t >= l.nonceDeadline)) ||
         (l.status === 1 && t >= l.vrfDeadline) ||
-        (l.status === 2 && t >= l.roundStartedAt + l.minSecs)
+        (l.status === 2 && t >= l.roundStartedAt + l.minSecs) ||
+        l.status === 6
       if (!need) return
       inflight.current = true
       try {
@@ -140,7 +141,10 @@ export default function Desk() {
         const kp = helperKeypair()
         if (l.status === 5) await lockIn(kp, conn, key)
         else if (l.status === 1) await finalizeWithoutVrf(kp, conn, key)
-        else await settle(kp, conn, key, l.feed)
+        else if (l.status === 6) {
+          if (l.revealedCount < l.playerCount) await revealEntries(kp, conn, key, l.revealedCount)
+          else await finishLeague(kp, conn, key)
+        } else await settle(kp, conn, key, l.feed)
         setHelpNote(null)
       } catch (e) {
         setHelpNote(`Automatic helper: ${e instanceof Error ? e.message.slice(0, 120) : 'failed'}`)
@@ -308,7 +312,7 @@ export default function Desk() {
               Help lock in and settle from this tab
             </label>
             {helpNote && <p className="warn small">{helpNote}</p>}
-            {(league.status === 5 || league.status === 1 || league.status === 2) && (
+            {(league.status === 5 || league.status === 1 || league.status === 2 || league.status === 6) && (
               <button
                 className="btn btn--line"
                 disabled={!!busy}
@@ -318,6 +322,7 @@ export default function Desk() {
                     const kp = helperKeypair()
                     if (league.status === 5) return lockIn(kp, conn, key)
                     if (league.status === 1) return finalizeWithoutVrf(kp, conn, key)
+                    if (league.status === 6) return league.revealedCount < league.playerCount ? revealEntries(kp, conn, key, league.revealedCount) : finishLeague(kp, conn, key)
                     return settle(kp, conn, key, league.feed)
                   })
                 }

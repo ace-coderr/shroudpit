@@ -6,7 +6,7 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-shroudpit = "69VymhYdXWsBVy9h5D1xdM6MU7DbBXF7rQHvGoUcW6K9"
+shroudpit = "E8DAQoqcTTi4TNYM2Q2MEzy3rxKHfqzBoMKrCPVbCsEF"
 
 [provider]
 cluster = "devnet"

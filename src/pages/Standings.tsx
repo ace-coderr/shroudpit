@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { PublicKey } from '@solana/web3.js'
-import { fetchEntries } from '../lib/chain'
+import { fetchCards } from '../lib/chain'
 import { STATUS_LABEL } from '../lib/config'
 import { short, useLeague, usePoll } from '../lib/hooks'
 import { useSigner } from '../lib/wallet'
@@ -23,7 +23,7 @@ export default function Standings() {
   }, [addr])
   const signer = useSigner()
   const { data: league } = useLeague(key, 5000)
-  const entries = usePoll(() => (key ? fetchEntries(key) : Promise.resolve([])), 10_000, [key?.toBase58()])
+  const entries = usePoll(() => (key ? fetchCards(key) : Promise.resolve([])), 10_000, [key?.toBase58()])
 
   if (!key) return <section className="page"><p className="notice notice--bad">That league address is not valid.</p></section>
 

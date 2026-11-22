@@ -23,6 +23,7 @@ export const STATUS_LABEL: Record<number, string> = {
   3: 'Between rounds',
   4: 'Finished',
   5: 'Sealing nonces',
+  6: 'Revealing',
 }
 
 export const CLOSE_MODE_LABEL: Record<number, string> = {

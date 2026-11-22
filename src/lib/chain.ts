@@ -74,8 +74,20 @@ export interface LeagueView {
   settlePrice: number
   settleTime: number
   winner: PublicKey
+  revealedCount: number
   /** true when the base-layer copy is stale because the account lives in the rollup */
   delegated: boolean
+}
+
+/** One finished round's closing position and nonce. Public only after the league ends. */
+export interface RoundPosView {
+  nonce: Uint8Array
+  committed: boolean
+  scored: boolean
+  side: number
+  leverage: number
+  entryPrice: number
+  retBps: number
 }
 
 export interface EntryView {
@@ -89,19 +101,34 @@ export interface EntryView {
   leverage: number
   entryPrice: number
   retBps: number
+  /** Revealed on the base layer only after the final round. */
+  history: RoundPosView[]
+}
+
+/** Public score card, committed after every round. Holds scores only. */
+export interface CardView {
+  key: PublicKey
+  league: PublicKey
+  player: PublicKey
   roundsScored: number
   sumRetBps: number
   lastRetBps: number
   rating: number
 }
 
-export interface SecretView {
-  league: PublicKey
-  vrfUsed: boolean
+export interface RoundSecretView {
+  epoch: number
+  startedAt: number
   closeAt: number
   lockSlot: number
   baseSeed: Uint8Array
   randomness: Uint8Array
+  vrfUsed: boolean
+}
+
+export interface SecretView {
+  league: PublicKey
+  history: RoundSecretView[]
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -130,9 +157,13 @@ export function toLeague(key: PublicKey, data: Uint8Array, delegated: boolean): 
     settlePrice: n(l.settle_price ?? l.settlePrice),
     settleTime: n(l.settle_time ?? l.settleTime),
     winner: l.winner,
+    revealedCount: l.revealed_count ?? l.revealedCount ?? 0,
     delegated,
   }
 }
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const pick = (o: Raw, snake: string, camel: string) => o[snake] ?? o[camel]
 
 export function toEntry(key: PublicKey, data: Uint8Array): EntryView {
   const e: Raw = coder.decode('Entry', Buffer.from(data))
@@ -142,15 +173,33 @@ export function toEntry(key: PublicKey, data: Uint8Array): EntryView {
     player: e.player,
     round: e.round,
     nonce: Uint8Array.from(e.nonce),
-    nonceEpoch: e.nonce_epoch ?? e.nonceEpoch,
+    nonceEpoch: pick(e, 'nonce_epoch', 'nonceEpoch'),
     side: e.side,
     leverage: e.leverage,
-    entryPrice: n(e.entry_price ?? e.entryPrice),
-    retBps: n(e.ret_bps ?? e.retBps),
-    roundsScored: e.rounds_scored ?? e.roundsScored,
-    sumRetBps: n(e.sum_ret_bps ?? e.sumRetBps),
-    lastRetBps: n(e.last_ret_bps ?? e.lastRetBps),
-    rating: n(e.rating),
+    entryPrice: n(pick(e, 'entry_price', 'entryPrice')),
+    retBps: n(pick(e, 'ret_bps', 'retBps')),
+    history: (e.history as Raw[]).map((h) => ({
+      nonce: Uint8Array.from(h.nonce),
+      committed: h.committed,
+      scored: h.scored,
+      side: h.side,
+      leverage: h.leverage,
+      entryPrice: n(pick(h, 'entry_price', 'entryPrice')),
+      retBps: n(pick(h, 'ret_bps', 'retBps')),
+    })),
+  }
+}
+
+export function toCard(key: PublicKey, data: Uint8Array): CardView {
+  const c: Raw = coder.decode('Card', Buffer.from(data))
+  return {
+    key,
+    league: c.league,
+    player: c.player,
+    roundsScored: pick(c, 'rounds_scored', 'roundsScored'),
+    sumRetBps: n(pick(c, 'sum_ret_bps', 'sumRetBps')),
+    lastRetBps: n(pick(c, 'last_ret_bps', 'lastRetBps')),
+    rating: n(c.rating),
   }
 }
 
@@ -158,25 +207,34 @@ export function toSecret(data: Uint8Array): SecretView {
   const s: Raw = coder.decode('Secret', Buffer.from(data))
   return {
     league: s.league,
-    vrfUsed: s.vrf_used ?? s.vrfUsed,
-    closeAt: n(s.close_at ?? s.closeAt),
-    lockSlot: n(s.lock_slot ?? s.lockSlot),
-    baseSeed: Uint8Array.from(s.base_seed ?? s.baseSeed),
-    randomness: Uint8Array.from(s.randomness),
+    history: (s.history as Raw[]).map((r) => ({
+      epoch: r.epoch,
+      startedAt: n(pick(r, 'started_at', 'startedAt')),
+      closeAt: n(pick(r, 'close_at', 'closeAt')),
+      lockSlot: n(pick(r, 'lock_slot', 'lockSlot')),
+      baseSeed: Uint8Array.from(pick(r, 'base_seed', 'baseSeed')),
+      randomness: Uint8Array.from(r.randomness),
+      vrfUsed: pick(r, 'vrf_used', 'vrfUsed'),
+    })),
   }
 }
 
 // ---------- discovery with no backend ----------
 
 const FIELD_SIZE: Record<string, number> = { u8: 1, i8: 1, u16: 2, u32: 4, i32: 4, u64: 8, i64: 8, bool: 1, pubkey: 32 }
-type IdlType = string | { array: [IdlType, number] }
-const sizeOf = (t: IdlType): number => (typeof t === 'string' ? FIELD_SIZE[t] : sizeOf(t.array[0]) * t.array[1])
-function accountSize(name: string) {
-  const def = (idl.types ?? []).find((t) => t.name === name)
+type IdlType = string | { array: [IdlType, number] } | { defined: { name: string } }
+const sizeOf = (t: IdlType): number => {
+  if (typeof t === 'string') return FIELD_SIZE[t]
+  if ('array' in t) return sizeOf(t.array[0]) * t.array[1]
+  return structSize(t.defined.name)
+}
+function structSize(name: string): number {
+  const def = (idl.types ?? []).find((x) => x.name === name)
   if (!def) throw new Error(`IDL has no type ${name}`)
   const fields = (def.type as unknown as { fields: { type: IdlType }[] }).fields
-  return 8 + fields.reduce((sum, f) => sum + sizeOf(f.type), 0)
+  return fields.reduce((sum, f) => sum + sizeOf(f.type), 0)
 }
+const accountSize = (name: string) => 8 + structSize(name)
 const discriminator = (name: string) => {
   const acc = (idl.accounts ?? []).find((a) => a.name === name)
   if (!acc) throw new Error(`IDL has no account ${name}`)
@@ -242,9 +300,14 @@ export async function fetchEntries(league: PublicKey): Promise<EntryView[]> {
   return rows.map((r) => toEntry(r.pubkey, r.account.data))
 }
 
-export async function fetchEntriesForPlayer(player: PublicKey): Promise<EntryView[]> {
-  const rows = await programAccounts('Entry', [{ memcmp: { offset: 8 + 32, bytes: player.toBase58() } }])
-  return rows.map((r) => toEntry(r.pubkey, r.account.data))
+export async function fetchCards(league: PublicKey): Promise<CardView[]> {
+  const rows = await programAccounts('Card', [{ memcmp: { offset: 8, bytes: league.toBase58() } }])
+  return rows.map((r) => toCard(r.pubkey, r.account.data))
+}
+
+export async function fetchCardsForPlayer(player: PublicKey): Promise<CardView[]> {
+  const rows = await programAccounts('Card', [{ memcmp: { offset: 8 + 32, bytes: player.toBase58() } }])
+  return rows.map((r) => toCard(r.pubkey, r.account.data))
 }
 
 /** Revealed secret (only meaningful once committed to the base layer). */
@@ -312,3 +375,9 @@ export function errorFromLogs(logs: string[] | null | undefined): string | null 
   const m = (logs ?? []).join('\n').match(/Error Code: (\w+)/)
   return m ? m[1] : null
 }
+
+export const cardPda = (league: PublicKey, player: PublicKey) =>
+  PublicKey.findProgramAddressSync(
+    [new TextEncoder().encode('card'), league.toBytes(), player.toBytes()],
+    PROGRAM_ID,
+  )[0]
