@@ -1,0 +1,43 @@
+/* All motion lives here so it can be switched off in one place. */
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes slide { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: none; } }
+@keyframes blink { 50% { opacity: 0.35; } }
+@keyframes shimmer { to { transform: translateX(100%); } }
+@keyframes cloth-breathe { 50% { transform: scaleY(0.97); } }
+@keyframes window-flicker {
+  0%, 100% { opacity: 1; }
+  18% { opacity: 0.55; }
+  22% { opacity: 1; }
+  47% { opacity: 0.7; }
+  52% { opacity: 1; }
+  80% { opacity: 0.6; }
+  84% { opacity: 1; }
+}
+@keyframes stamp {
+  0% { opacity: 0; transform: rotate(-14deg) scale(2); }
+  55% { opacity: 1; transform: rotate(-4deg) scale(0.94); }
+  100% { opacity: 1; transform: rotate(-6deg) scale(1); }
+}
+
+/* page transition (180ms fade + slide) */
+.pagefx { animation: slide var(--t-page) var(--ease) both; }
+
+/* list entrance */
+.enter { animation: rise 260ms var(--ease) both; animation-delay: calc(var(--i, 0) * 45ms); }
+
+/* rank rows slide to their new place when the order changes */
+.rankrow { transition: transform 500ms var(--ease); }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+  .shroud--revealed .shroud__cloth i { transform: none; opacity: 0; }
+  .skeleton::after { display: none; }
+}

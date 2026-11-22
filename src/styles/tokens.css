@@ -1,0 +1,29 @@
+/* Design tokens. One signal colour (teal); amber only for "window open / closing". */
+:root {
+  --paper: #f1e9d8;
+  --paper-deep: #e8dec8;
+  --ink: #0e0e0e;
+  --card: #f7f3ea;
+  --muted: #4a4a44;
+  --teal: #0f766e;
+  --teal-soft: #d5ebe7;
+  --amber: #b45309;
+  --amber-soft: #f4e1c4;
+  --danger: #9f1d1d;
+
+  --font-head: 'Archivo Black', 'Arial Black', Impact, sans-serif;
+  --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+
+  --rule: 1px solid var(--ink);
+  --radius: 10px;
+  --gutter: clamp(1rem, 4vw, 2.5rem);
+  --max: 72rem;
+  --nav-h: 3.75rem;
+  --tab-h: 4rem;
+  --ease: cubic-bezier(0.22, 0.8, 0.24, 1);
+  --t-fast: 140ms;
+  --t-page: 180ms;
+
+  color-scheme: light;
+}
