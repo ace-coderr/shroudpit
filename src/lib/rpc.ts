@@ -3,9 +3,10 @@
  *
  * The public devnet endpoint rate-limits hard (getProgramAccounts above all), so every request
  * goes through a fetch that:
- *   - backs off exponentially on HTTP 429 / 5xx / network errors and rotates between endpoints
- *     when more than one is configured (optional build-time VITE_RPC_FALLBACK, comma-separated,
- *     public keyless URLs only: it is baked into the public bundle);
+ *   - backs off exponentially on HTTP 429 / 5xx / network errors and rotates between endpoints.
+ *     An optional build-time VITE_RPC_FALLBACK (comma-separated devnet RPC URLs) is tried FIRST for
+ *     devnet reads and sends, with the public devnet endpoint behind it. The value is baked into the
+ *     public bundle, so treat it as public (restrict it by allowed origin at the provider);
  *   - dedupes identical in-flight reads and briefly reuses a fresh answer;
  *   - remembers the last good answer for every read, in memory and in localStorage with its
  *     timestamp, and serves it (flagged as cached) when the network keeps failing, so a failed
@@ -14,10 +15,20 @@
  * connection has its own fetch), so no token is ever stored.
  */
 const env = (import.meta as { env?: Record<string, string | undefined> }).env
-export const FALLBACK_RPCS: string[] = (env?.VITE_RPC_FALLBACK ?? '')
+/** Extra devnet endpoints from the build, in order. Empty when none was configured. */
+export const EXTRA_RPCS: string[] = (env?.VITE_RPC_FALLBACK ?? '')
   .split(',')
   .map((s: string) => s.trim())
   .filter(Boolean)
+
+/**
+ * The order devnet requests try endpoints in: configured endpoint(s) first when present, the public
+ * devnet RPC after them. With nothing configured it is just the public endpoint.
+ */
+export function devnetOrder(publicUrl: string): { primary: string; fallbacks: string[] } {
+  const all = [...EXTRA_RPCS, publicUrl]
+  return { primary: all[0], fallbacks: all.slice(1) }
+}
 
 const MAX_ATTEMPTS = 8
 const MAX_ATTEMPTS_WITH_CACHE = 3 // a cached answer exists: give up on the network sooner

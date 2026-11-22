@@ -27,8 +27,10 @@ jobs:
       - run: npm run lint
       - run: npm run build
         env:
-          # optional repository variable: comma-separated extra devnet RPC URLs (public, keyless)
-          VITE_RPC_FALLBACK: ${{ vars.VITE_RPC_FALLBACK }}
+          # Optional: comma-separated devnet RPC URLs, tried before the public endpoint. Read from the
+          # repository secret of this name, or from a repository variable if the secret is empty.
+          # It is compiled into the public bundle, so restrict it by allowed origin at the provider.
+          VITE_RPC_FALLBACK: ${{ secrets.VITE_RPC_FALLBACK || vars.VITE_RPC_FALLBACK }}
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:

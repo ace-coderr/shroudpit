@@ -1,6 +1,6 @@
 import type { ConfirmedSignatureInfo } from '@solana/web3.js'
 import { BASE_RPC } from './config'
-import { FALLBACK_RPCS, rpcJson } from './rpc'
+import { devnetOrder, rpcJson } from './rpc'
 
 /**
  * Labels for the transactions that touch a league on devnet.
@@ -28,17 +28,18 @@ interface Logs {
 }
 
 const cache = new Map<string, Logs>()
+const order = devnetOrder(BASE_RPC)
 
 async function logsOf(signature: string): Promise<Logs | null> {
   const hit = cache.get(signature)
   if (hit) return hit
   try {
     const tx = await rpcJson<{ meta?: { logMessages?: string[] } }>(
-      BASE_RPC,
+      order.primary,
       'getTransaction',
       // version-1 transactions (the validator's commits) are not understood by web3.js, so ask raw
       [signature, { encoding: 'json', maxSupportedTransactionVersion: 1, commitment: 'confirmed' }],
-      FALLBACK_RPCS,
+      order.fallbacks,
     )
     const lines = tx?.meta?.logMessages ?? []
     const names = lines.filter((l) => l.includes('Instruction:')).map((l) => l.split('Instruction:')[1].trim())

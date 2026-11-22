@@ -174,7 +174,15 @@ KEYPAIR_DIR=$HOME/.config/solana node scripts/demo/run-round.mjs
 
 ### RPC and rate limits
 
-The public devnet RPC rate-limits `getProgramAccounts` (HTTP 429), which the site uses to discover leagues and entries with no backend. Every read and send goes through a fetch that backs off exponentially (about 0.4 s, 0.8 s, 1.6 s, 3.2 s, 6.4 s, then 10 s, eight attempts in all, with jitter) on 429 and 5xx. To add more endpoints, set the optional build-time variable `VITE_RPC_FALLBACK` to a comma-separated list of devnet RPC URLs (see `.env.example`). They are tried in rotation between retries. No endpoint with a key is ever committed: set it in your shell or an untracked `.env.local`. For the GitHub Pages build, set a repository variable named `VITE_RPC_FALLBACK` (the workflow passes it to the build). A build-time variable is baked into the public bundle, so only use endpoints that are meant to be public and need no key.
+The public devnet RPC rate-limits `getProgramAccounts` (HTTP 429), which is how the site finds leagues and players with no backend. So the site:
+
+- reads a league's players once (one lookup), then derives every entry and score card as a PDA and reads them with batched `getMultipleAccounts`; the Record page makes a fixed burst of about five calls, including the trophy check;
+- sends every devnet read and send through a fetch that backs off exponentially on 429 and 5xx (about 0.4 s, 0.8 s, 1.6 s, 3.2 s, 6.4 s, then 10 s, eight attempts in all, with jitter), dedupes identical in-flight reads, and remembers the last good answer in memory and `localStorage` with its timestamp, shown with a "cached" badge if devnet keeps failing;
+- never shows a raw RPC reply or an empty state for a failed load: it shows "Devnet is busy, retrying…", retries by itself, and offers a Retry button.
+
+**Optional private endpoint.** Set `VITE_RPC_FALLBACK` to a comma-separated list of devnet RPC URLs (see `.env.example`). When present, those endpoints are tried first for devnet reads and sends, and the public devnet RPC stays behind them as the fallback. For the GitHub Pages build the workflow reads the repository **secret** `VITE_RPC_FALLBACK`, or a repository **variable** of the same name if the secret is empty. No URL or key is ever committed.
+
+Important: a Vite build variable is compiled into the public JavaScript, so anyone can read the value from the site's source. Use a devnet-only key, restrict it to this site's origin in the provider's dashboard (allowed domains or origins), watch its usage, and rotate it if it is abused.
 
 The helper that locks in, settles and reveals from an open desk looks a league's players up once and reuses them, so polling every second does not repeat that call.
 

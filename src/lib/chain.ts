@@ -6,12 +6,13 @@ import type { Transaction } from '@solana/web3.js'
 import bs58 from 'bs58'
 import idlJson from './idl.json'
 import { BASE_RPC, PROGRAM_ID, TEE_RPC } from './config'
-import { FALLBACK_RPCS, resilientFetch } from './rpc'
+import { devnetOrder, resilientFetch } from './rpc'
 
 export const idl = idlJson as unknown as Idl
-export const baseConnection = new Connection(BASE_RPC, {
+const baseOrder = devnetOrder(BASE_RPC)
+export const baseConnection = new Connection(baseOrder.primary, {
   commitment: 'confirmed',
-  fetch: resilientFetch(BASE_RPC, FALLBACK_RPCS),
+  fetch: resilientFetch(baseOrder.primary, baseOrder.fallbacks),
   disableRetryOnRateLimit: true, // resilientFetch does the backing off and rotates endpoints
 })
 /** Unauthenticated connection: enough for publicly readable accounts (league, price feed). */
