@@ -165,4 +165,4 @@ The site is a static build served from GitHub Pages. Every push to `main` runs `
 
 Front end: Lobby, Creator Console, Sealed Desk (with fuzzy Round Clock), Rank-only Standings, Reveal & Audit and Skill Record are implemented and read real devnet data. The winner claims a trophy token from the Skill Record page.
 
-On-chain flow verified on devnet: league creation, joining, delegation to the Private ER, private entry permissions, the privacy reads in the table above, the live price feed on the rollup and the base-layer VRF. See `docs/audit-checklist.md` for the open and verified checks.
+On-chain flow verified on devnet: league creation, joining, delegation to the Private ER, private entries, VRF mixed into the close time inside the Private ER, settlement and the chunked final reveal for leagues of 3 and 8 wallets, multi-round leagues (3 rounds), the privacy reads above, the trophy claim, and a never-funded key triggering lock-in and settlement. See `docs/audit-checklist.md` for the open and verified checks.

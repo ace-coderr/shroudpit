@@ -32,7 +32,7 @@ use ephemeral_rollups_sdk::{
 use error::ShroudError;
 use state::*;
 
-declare_id!("E8DAQoqcTTi4TNYM2Q2MEzy3rxKHfqzBoMKrCPVbCsEF");
+declare_id!("69VymhYdXWsBVy9h5D1xdM6MU7DbBXF7rQHvGoUcW6K9");
 
 /// The identity PDA this program signs randomness requests with. A `const` item so the PDA is
 /// derived at compile time rather than on every call.
