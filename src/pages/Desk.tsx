@@ -10,7 +10,8 @@ import {
 import type { EntryView } from '../lib/chain'
 import { STATUS_LABEL } from '../lib/config'
 import { short, useLeague, useNow, usePoll } from '../lib/hooks'
-import { TxError, teeSession } from '../lib/session'
+import { explain } from '../lib/errors'
+import { teeSession } from '../lib/session'
 import { useSigner } from '../lib/wallet'
 import CloseBand from '../components/CloseBand'
 import DeskShell from '../components/DeskShell'
@@ -22,21 +23,6 @@ import { Connection } from '@solana/web3.js'
 
 const ER_PUBLIC = 'https://devnet-eu.magicblock.app'
 const SIDE = { '1': 'Long', '-1': 'Short', '0': 'Flat' } as Record<string, string>
-
-function friendly(e: unknown): string {
-  if (e instanceof TxError && e.code) {
-    const map: Record<string, string> = {
-      RoundClosed: 'The round has closed. The close moment was hidden until now.',
-      NoncePhaseClosed: 'The nonce phase is over.',
-      NonceAlreadyCommitted: 'Your nonce for this round is already sealed.',
-      PermissionMissing: 'Your entry is not sealed yet. Seal it first.',
-      StalePrice: 'The price was stale. Try again.',
-      WrongStatus: 'The league is not in a phase that allows this.',
-    }
-    return map[e.code] ?? `Rejected by the program: ${e.code}`
-  }
-  return e instanceof Error ? e.message : String(e)
-}
 
 export default function Desk() {
   const { league: addr } = useParams()
@@ -54,7 +40,7 @@ export default function Desk() {
   const [unlocked, setUnlocked] = useState(false)
   const [attested, setAttested] = useState<boolean | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string; retry?: boolean } | null>(null)
   const [side, setSide] = useState<1 | -1 | 0>(1)
   const [leverage, setLeverage] = useState(2)
   const [showMine, setShowMine] = useState(false)
@@ -105,7 +91,7 @@ export default function Desk() {
       setAttested(s.attested)
       setUnlocked(true)
     } catch (e) {
-      setMsg({ ok: false, text: friendly(e) })
+      { const x = explain(e); setMsg({ ok: false, text: x.text, retry: x.retry }) }
     } finally {
       setBusy(null)
     }
@@ -120,7 +106,7 @@ export default function Desk() {
       setMsg({ ok: true, text: `${name}: done` })
       await mine.refresh()
     } catch (e) {
-      setMsg({ ok: false, text: `${name}: ${friendly(e)}` })
+      { const x = explain(e); setMsg({ ok: false, text: `${name}: ${x.text}`, retry: x.retry }) }
     } finally {
       setBusy(null)
     }
@@ -152,7 +138,7 @@ export default function Desk() {
         } else await settle(kp, conn, key, l.feed)
         setHelpNote(null)
       } catch (e) {
-        setHelpNote(`Automatic helper: ${e instanceof Error ? e.message.slice(0, 120) : 'failed'}`)
+        { const x = explain(e); setHelpNote(`Automatic helper: ${x.text}${x.retry ? ' It will try again by itself.' : ''}`) }
       } finally {
         inflight.current = false
       }
@@ -169,6 +155,8 @@ export default function Desk() {
   const nonceDone = !!e && e.nonceEpoch === league.epoch && league.epoch > 0
   const live = league.status === 2
   const over = league.status === 3 || league.status === 4 || league.status === 6
+  // A scored round sets settleTime at or after the round start; a voided round leaves it behind.
+  const lastVoided = over && league.round >= 1 && league.settleTime < league.roundStartedAt
   const unrealised =
     e && e.side !== 0 && price.data && e.entryPrice > 0
       ? Math.round((((price.data.price * 1e8 - e.entryPrice) / e.entryPrice) * 10_000 * e.side * e.leverage))
@@ -187,7 +175,7 @@ export default function Desk() {
             <span className="mono small break">{league.key.toBase58()}</span>
             <span className="tag">round {Math.min(league.round + 1, league.nRounds)} of {league.nRounds}</span>
             {live && <span className="tag tag--live">live</span>}
-            {over && <SealStamp label={league.status === 4 ? 'Finished' : league.status === 6 ? 'Revealing' : 'Settled'} />}
+            {over && <SealStamp voided={lastVoided} label={lastVoided ? 'Voided' : league.status === 4 ? 'Finished' : league.status === 6 ? 'Revealing' : 'Settled'} />}
           </div>
         </header>
 
@@ -325,7 +313,7 @@ export default function Desk() {
                   {msg && (
                     <div className={`notice ${msg.ok ? 'notice--ok' : 'notice--bad'}`} role="status">
                       <p>{msg.text}</p>
-                      {!msg.ok && (
+                      {!msg.ok && msg.retry && (
                         <button
                           className="btn btn--small"
                           style={{ marginTop: '0.5rem' }}
@@ -375,7 +363,7 @@ export default function Desk() {
               )}
               {(league.status === 3 || league.status === 4) && (
                 <p className="small">
-                  {league.status === 4 ? 'The league has finished.' : 'The round settled.'}{' '}
+                  {lastVoided ? 'This round was voided: nobody settled in time, so nobody was scored for it. ' : ''}{league.status === 4 ? 'The league has finished.' : lastVoided ? '' : 'The round settled.'}{' '}
                   <Link to={`/audit/${key.toBase58()}`}>Reveal and audit</Link> · <Link to={`/standings/${key.toBase58()}`}>Standings</Link>
                 </p>
               )}
