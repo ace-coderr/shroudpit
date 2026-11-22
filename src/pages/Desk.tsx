@@ -9,7 +9,7 @@ import {
 } from '../lib/chain'
 import type { EntryView } from '../lib/chain'
 import { STATUS_LABEL } from '../lib/config'
-import { leagueName } from '../lib/format'
+import { fmtUtc, rankCards, shortAddr } from '../lib/format'
 import { useLeague, useNow, usePoll } from '../lib/hooks'
 import { explain } from '../lib/errors'
 import { teeSession } from '../lib/session'
@@ -191,14 +191,15 @@ export default function Desk() {
       : null
   const joinedOk = !!signer && joined.data === true
   const step = !signer ? 1 : !joinedOk ? 1 : !unlocked ? 2 : 3
+  const finalCards = wrapped && cards.data ? rankCards(cards.data, league.winner.toBase58()) : null
   const advanceLabel = league.status === 5 ? 'Lock in now' : league.status === 1 ? 'Finalise now' : league.status === 6 ? 'Reveal now' : 'Settle now'
 
   return (
     <DeskShell league={league}>
       <section className="page">
         <header className="page__head">
-          <span className="caption">Sealed desk</span>
-          <h1>{leagueName(league.key.toBase58())}</h1>
+          <span className="caption">{wrapped ? 'Final result' : 'Sealed desk'}</span>
+          <h1 className="mono h1--addr">{shortAddr(league.key.toBase58())}</h1>
           <div className="row">
             <Addr value={league.key.toBase58()} />
             <span className={`tag${live ? ' tag--live' : ''}`}>{STATUS_LABEL[league.status]}</span>
@@ -213,15 +214,42 @@ export default function Desk() {
         <div className="desk">
           <div className="desk__col">
             <div className="card"><CloseBand league={league} /></div>
+            {wrapped ? (
+              <div className="card">
+                <div className="card__head"><h3>Settle price</h3><span className="tag">last scored round</span></div>
+                {league.settleTime > 0 ? (
+                  <>
+                    <p className="price mono">${(league.settlePrice / 1e8).toFixed(4)}</p>
+                    <p className="muted small">Published {fmtUtc(league.settleTime)}.</p>
+                  </>
+                ) : (
+                  <p className="muted">No round was scored, so there is no settle price.</p>
+                )}
+              </div>
+            ) : (
             <div className="card">
               <div className="card__head"><h3>Price</h3><span className="tag">live oracle</span></div>
-              <p className="price mono">{price.data ? `$${price.data.price.toFixed(4)}` : '…'}</p>
+              <p className="price mono">{price.data ? `${price.data.price.toFixed(4)}` : '…'}</p>
               <p className="muted small">
                 Updated every second inside the rollup{price.data ? `, ${Math.max(0, Math.round(now - price.data.publishTime))}s old` : ''}.
               </p>
             </div>
+            )}
             <div className="card">
               <div className="card__head"><h3>Players</h3></div>
+              {wrapped && finalCards && (
+                <ul className="roster">
+                  {finalCards.map((c, i) => (
+                    <li key={c.key.toBase58()}>
+                      <span className="mono">{i + 1}</span>
+                      <Addr value={c.player.toBase58()} />
+                      {signer && c.player.equals(signer.publicKey) && <span className="tag">you</span>}
+                      <span className="roster__pos mono small">rating {c.rating} · {c.lastRetBps >= 0 ? '+' : ''}{(c.lastRetBps / 100).toFixed(2)}%</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {!(wrapped && finalCards) && (
               <ul className="roster">
                 {players.data?.map((p: EntryView) => (
                   <li key={p.key.toBase58()}>
@@ -231,7 +259,8 @@ export default function Desk() {
                   </li>
                 ))}
               </ul>
-              <p className="muted small">Other players' positions stay sealed until the final round.</p>
+              )}
+              <p className="muted small">{wrapped ? 'Final rank, rating and the return of the last scored round.' : 'Other players\' positions stay sealed until the final round.'}</p>
             </div>
           </div>
 
@@ -364,6 +393,7 @@ export default function Desk() {
             </ol>
             )}
 
+            {league.status !== 4 && (
             <div className="card">
               <div className="card__head"><h3>Settlement window</h3><span className={`tag${live ? ' tag--warn' : ''}`}>{live ? 'window open' : 'idle'}</span></div>
               <p className="muted small">
@@ -405,6 +435,7 @@ export default function Desk() {
                 </p>
               )}
             </div>
+            )}
           </div>
         </div>
       </section>

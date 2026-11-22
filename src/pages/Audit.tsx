@@ -102,6 +102,7 @@ export default function Audit() {
     [league?.round, secret.data?.history.length, entries.data?.length],
   )
 
+  const [newestFirst, setNewestFirst] = useState(false) // default: oldest first
   const [revealBusy, setRevealBusy] = useState(false)
   const [revealErr, setRevealErr] = useState<string | null>(null)
   async function revealNext() {
@@ -292,13 +293,18 @@ export default function Audit() {
         })}
 
         <div className="card">
-          <div className="card__head"><h3>Settlement transactions</h3></div>
+          <div className="card__head">
+            <h3>League transactions</h3>
+            <button type="button" className="btn btn--small btn--ghost" onClick={() => setNewestFirst((v) => !v)}>
+              {newestFirst ? 'Newest first · show oldest first' : 'Oldest first · show newest first'}
+            </button>
+          </div>
           <p className="muted small" style={{ marginBottom: '0.6rem' }}>
-            Commits from the Private ER land on devnet. <a href={explorerAddress(secretPda(key).toBase58())} target="_blank" rel="noreferrer">Secret account</a>
+            Commits from the Private ER land on devnet. Labels are derived from transaction order and program logs, not stored on chain. <a href={explorerAddress(secretPda(key).toBase58())} target="_blank" rel="noreferrer">Secret account</a>
           </p>
           {(sigs.loading || labelled.loading) && <Skeleton count={1} height="4rem" />}
           <ul className="siglist">
-            {(labelled.data ?? []).map((t) => (
+            {(newestFirst ? (labelled.data ?? []) : [...(labelled.data ?? [])].reverse()).map((t) => (
               <li key={t.signature}>
                 <strong>{t.label}</strong>
                 {t.note && <span className="tag" style={{ marginLeft: '0.4rem' }}>{t.note}</span>}

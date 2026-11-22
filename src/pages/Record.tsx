@@ -3,8 +3,9 @@ import { Link, useParams } from 'react-router-dom'
 import { PublicKey } from '@solana/web3.js'
 import { claimTrophy } from '../lib/actions'
 import { fetchRecord } from '../lib/chain'
+import type { CardView, LeagueView } from '../lib/chain'
 import { STATUS_LABEL, explorerAddress } from '../lib/config'
-import { leagueName } from '../lib/format'
+import { fmtUtc, leagueName } from '../lib/format'
 import { usePoll } from '../lib/hooks'
 import { useSigner } from '../lib/wallet'
 import Addr from '../components/Addr'
@@ -13,6 +14,31 @@ import LoadFailed from '../components/LoadFailed'
 import Shroud from '../components/Shroud'
 import Skeleton from '../components/Skeleton'
 import StatusBadge from '../components/StatusBadge'
+
+const ordinal = (n: number) => (n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`)
+
+/**
+ * Placement and outcome from real data. The winner is recorded on chain, so "1st of N · won" is exact.
+ * Other players' exact places need every card of the league, which this page does not read: it says
+ * "2nd of 2 · lost" only when the league had two players, and "lost" otherwise.
+ */
+function Outcome({ card, league, pk }: { card: CardView; league: LeagueView; pk: PublicKey }) {
+  if (league.status !== 4) return <span className="muted small">{card.roundsScored > 0 ? 'scored' : 'not scored yet'}</span>
+  const date = league.settleTime > 0 ? fmtUtc(league.settleTime).split(', ')[0] : null
+  const n = league.playerCount
+  const won = league.winner.equals(pk)
+  let text: string
+  if (card.roundsScored === 0) text = 'voided'
+  else if (won) text = `${ordinal(1)} of ${n} · won`
+  else if (n === 2) text = `${ordinal(2)} of 2 · lost`
+  else text = `lost · ${n} players`
+  return (
+    <div>
+      {won && card.roundsScored > 0 ? <span className="tag tag--live">{text}</span> : <span className="small">{text}</span>}
+      {date && <div className="muted small">finished {date}</div>}
+    </div>
+  )
+}
 
 const Cup = () => (
   <svg className="icon" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -150,7 +176,7 @@ export default function Record() {
                     <td data-label="Rating" className="mono">{card.roundsScored > 0 ? card.rating : '-'}</td>
                     <td data-label="Last return" className="mono">{card.roundsScored > 0 ? `${(card.lastRetBps / 100).toFixed(2)}%` : '-'}</td>
                     <td data-label="Result">
-                      {l!.status === 4 && l!.winner.equals(pk) ? <span className="tag tag--live">winner</span> : <span className="muted small">{card.roundsScored > 0 ? 'scored' : 'not scored yet'}</span>}
+                      <Outcome card={card} league={l!} pk={pk} />
                     </td>
                   </tr>
                 ))}

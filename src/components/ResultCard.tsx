@@ -61,7 +61,9 @@ export default function ResultCard({
             </div>
             <div>
               <span className="caption">Rounds</span>
-              <div className="result__big mono">{scoredVoided(shown.roundsScored, settled)}</div>
+              <div className="result__big result__big--lines mono">
+                {scoredVoided(shown.roundsScored, settled).split(' · ').map((part) => <div key={part}>{part}</div>)}
+              </div>
             </div>
           </div>
 
