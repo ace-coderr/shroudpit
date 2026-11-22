@@ -65,3 +65,12 @@ Every route and the states it can be in. Used as the checklist for the final cli
 - **Loading / error / no leagues**.
 - **Record**: leagues played, rounds scored, leagues won, per-league rows.
 - **Trophies**: none, held (token link), won and unclaimed (claim button, signature pending, claimed message, error).
+
+## Added states (UI polish)
+- **Desk, Finished or Revealing**: the connect/unlock/place steps are hidden and a result card shows instead: final rank (or the winner when no player wallet is connected), rating, "n scored · n voided", return per round from the revealed entries, a winner badge, and links to Audit, Standings and Record. While Revealing, per-round returns read "published when the reveal finishes".
+- **Desk, settled or finished band**: the close band shows the settled time in UTC. A voided last round shows "voided" instead of a stale time, plus "This round was voided: nobody settled in time".
+- **Desk, settle banner**: while a round is Live (and while Revealing) "Keep this tab open: settlement needs an open desk" with a countdown. Variants: window not yet open, window open (counts to the earliest possible void), every window passed, helper turned off.
+- **Desk helper**: polls every second while a settlement window can be open, every three seconds otherwise. Errors show plain-language text; Retry appears only when a retry can help.
+- **Standings**: "n scored · n voided" for the league and per row; a per-row link to that wallet's rating on Audit (`/audit/:league?wallet=<address>`, the row is highlighted).
+- **Audit, Finished**: heading "Final scores"; times in readable UTC; settlement transactions labelled (create, join, close joining, settle round n with "voided" when it was, reveal chunk n, finish, claim trophy) from the program logs on devnet.
+- **RPC**: 429 and 5xx responses are retried with exponential backoff; extra endpoints come from `VITE_RPC_FALLBACK`.
