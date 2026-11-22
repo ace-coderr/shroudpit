@@ -5,7 +5,8 @@ import { join } from 'node:path'
 import { ComputeBudgetProgram, Connection, Keypair, PublicKey } from '@solana/web3.js'
 import * as anchor from '@anchor-lang/core'
 import nacl from 'tweetnacl'
-import { getAuthToken, verifyTeeRpcIntegrity } from '@magicblock-labs/ephemeral-rollups-sdk'
+import { DELEGATION_PROGRAM_ID, getAuthToken, verifyTeeRpcIntegrity } from '@magicblock-labs/ephemeral-rollups-sdk'
+import bs58 from 'bs58'
 
 // The program under test is whatever the IDL says (IDL=path overrides the default).
 const IDL_PATH = process.env.IDL ?? 'program/target/idl/shroudpit.json'
@@ -107,4 +108,28 @@ export const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 export function decode(program, name, data) {
   return program.coder.accounts.decode(name, data)
+}
+
+/**
+ * Find a league's entries on chain (delegated ones keep their data on the base layer, owned by the
+ * delegation program) and build the account lists the program expects. Nothing is assumed about
+ * which wallets play.
+ *   entries: [{ key, player }] in ascending entry-key order
+ *   pairs:   [entry, card, entry, card, ...] for settle_and_reveal (both writable)
+ */
+export async function discoverEntries(base, prog, league) {
+  const disc = bs58.encode(Buffer.from(prog.idl.accounts.find((a) => a.name.toLowerCase() === 'entry').discriminator))
+  const rows = []
+  for (const owner of [PROGRAM_ID, DELEGATION_PROGRAM_ID]) {
+    const accs = await base.getProgramAccounts(owner, {
+      filters: [{ memcmp: { offset: 0, bytes: disc } }, { memcmp: { offset: 8, bytes: league.toBase58() } }],
+    })
+    for (const a of accs) rows.push({ key: a.pubkey, player: prog.coder.accounts.decode('entry', a.account.data).player })
+  }
+  rows.sort((x, y) => Buffer.compare(x.key.toBuffer(), y.key.toBuffer()))
+  const pairs = rows.flatMap((r) => [
+    { pubkey: r.key, isSigner: false, isWritable: true },
+    { pubkey: cardPda(league, r.player), isSigner: false, isWritable: true },
+  ])
+  return { entries: rows, pairs }
 }
