@@ -38,3 +38,4 @@ test-ledger/
 
 # local end-to-end run state (wallet addresses, signatures)
 .e2e/
+.og/
