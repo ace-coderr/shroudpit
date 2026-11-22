@@ -53,8 +53,9 @@ async function retry<T>(label: string, fn: () => Promise<T>, tries = 15): Promis
     }
   }
 }
+// public devnet can rate-limit for a while: retry reads instead of failing a check on a 429
 const read = async (key: PublicKey): Promise<LeagueView> => {
-  const l = await fetchLeague(key)
+  const l = await retry('read league', () => fetchLeague(key), 8)
   if (!l) throw new Error('league not found')
   return l
 }
@@ -92,7 +93,7 @@ async function goLive(round: number) {
   return l
 }
 const settleOnce = async () => lib.settle(helperKp, helperConn, key, feed)
-const scoredCount = async () => (await fetchCards(key)).map((c) => c.roundsScored)
+const scoredCount = async () => (await retry('read cards', () => fetchCards(key), 8)).map((c) => c.roundsScored)
 
 // ---------------------------------------------------------------- round 1: (a) and (b)
 let l = await goLive(0)
