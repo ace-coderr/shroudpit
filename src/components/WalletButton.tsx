@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { WalletReadyState } from '@solana/wallet-adapter-base'
 import { useWallet } from '../lib/wallet'
-import { short } from '../lib/hooks'
+import { shortAddr } from '../lib/format'
 
 /** Connect control. When connected the truncated address is visible and copyable. */
 export default function WalletButton() {
@@ -23,7 +23,7 @@ export default function WalletButton() {
           }}
         >
           <span className="wallet__dot" aria-hidden="true" />
-          <span className="mono">{copied ? 'copied' : short(addr, 4, 4)}</span>
+          <span className="mono">{copied ? 'copied' : shortAddr(addr)}</span>
         </button>
         <button className="wallet__out" onClick={() => void disconnect()} aria-label="Disconnect wallet">
           Disconnect

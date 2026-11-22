@@ -4,8 +4,10 @@ import { PublicKey } from '@solana/web3.js'
 import { claimTrophy } from '../lib/actions'
 import { fetchCardsForPlayer, fetchLeagues, fetchTrophies, trophyClaimed } from '../lib/chain'
 import { STATUS_LABEL, explorerAddress } from '../lib/config'
-import { short, usePoll } from '../lib/hooks'
+import { leagueName } from '../lib/format'
+import { usePoll } from '../lib/hooks'
 import { useSigner } from '../lib/wallet'
+import Addr from '../components/Addr'
 import CopyField from '../components/CopyField'
 import Shroud from '../components/Shroud'
 import Skeleton from '../components/Skeleton'
@@ -89,7 +91,8 @@ export default function Record() {
     <section className="page">
       <header className="page__head">
         <span className="caption">Skill record</span>
-        <h1 className="break">{pk ? short(pk.toBase58(), 6, 6) : 'Your record'}</h1>
+        <h1>{pk ? 'Record' : 'Your record'}</h1>
+        {pk && <div className="row"><Addr value={pk.toBase58()} /></div>}
         <p className="page__lede">
           A record anyone can verify: every figure is read from committed devnet score cards, and every league links to its audit page.
         </p>
@@ -127,8 +130,8 @@ export default function Record() {
                   <span className="trophy__disc"><Cup /></span>
                   <div className="stack" style={{ gap: '0.3rem' }}>
                     <StatusBadge kind="revealed" label="Held · confirmed on-chain" />
-                    <Link className="mono small" to={`/audit/${h.league.key.toBase58()}`}>league {short(h.league.key.toBase58(), 5, 5)}</Link>
-                    <a className="mono small" href={explorerAddress(h.mint.toBase58())} target="_blank" rel="noreferrer">token {short(h.mint.toBase58(), 5, 5)}</a>
+                    <Link className="small" to={`/audit/${h.league.key.toBase58()}`}>{leagueName(h.league.key.toBase58())}</Link>
+                    <span className="small">Token <Addr value={h.mint.toBase58()} href={explorerAddress(h.mint.toBase58())} /></span>
                   </div>
                 </div>
               ))}
@@ -137,7 +140,7 @@ export default function Record() {
                   <span className="trophy__disc" style={{ background: 'var(--paper)', color: 'var(--ink)' }}><Cup /></span>
                   <div className="stack" style={{ gap: '0.4rem' }}>
                     <StatusBadge kind="sealed" label="Won · unclaimed" />
-                    <span className="mono small">League {short(l.key.toBase58(), 5, 5)}</span>
+                    <span className="small">{leagueName(l.key.toBase58())}</span>
                     {own ? (
                       <button className="btn btn--primary btn--small" disabled={claiming === l.key.toBase58()} onClick={() => void claim(l.key)}>
                         {claiming === l.key.toBase58() ? 'Waiting for signature…' : 'Claim trophy (about 0.0026 SOL)'}
@@ -162,7 +165,7 @@ export default function Record() {
               <tbody>
                 {rows.map(({ card, league: l }) => (
                   <tr key={card.key.toBase58()}>
-                    <td data-label="League"><Link className="mono" to={`/audit/${l!.key.toBase58()}`}>{short(l!.key.toBase58(), 5, 5)}</Link></td>
+                    <td data-label="League"><Link to={`/audit/${l!.key.toBase58()}`}>{leagueName(l!.key.toBase58())}</Link></td>
                     <td data-label="State"><span className="tag">{STATUS_LABEL[l!.status]}</span></td>
                     <td data-label="Rating" className="mono">{card.roundsScored > 0 ? card.rating : '-'}</td>
                     <td data-label="Last return" className="mono">{card.roundsScored > 0 ? `${(card.lastRetBps / 100).toFixed(2)}%` : '-'}</td>

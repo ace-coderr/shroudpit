@@ -2,7 +2,8 @@ import type { ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
 import { STATUS_LABEL } from '../lib/config'
 import type { LeagueView } from '../lib/chain'
-import { short } from '../lib/hooks'
+import { leagueName } from '../lib/format'
+import Addr from './Addr'
 
 const I = ({ d }: { d: string }) => (
   <svg className="icon navicon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -39,11 +40,14 @@ export default function DeskShell({ league, children }: { league: LeagueView | n
       <aside className="sidebar" aria-label="League">
         <div className="sidebar__league">
           <span className="caption">League</span>
-          <h2>{league ? STATUS_LABEL[league.status] : '…'}</h2>
+          <h2>{league ? leagueName(league.key.toBase58()) : '…'}</h2>
           {league && (
-            <span className="mono small break">
-              {short(league.key.toBase58(), 6, 6)} · round {Math.min(league.round + 1, league.nRounds)}/{league.nRounds}
-            </span>
+            <>
+              <Addr value={league.key.toBase58()} />
+              <span className="small">
+                {STATUS_LABEL[league.status]} · round {Math.min(league.round + 1, league.nRounds)}/{league.nRounds}
+              </span>
+            </>
           )}
         </div>
         <nav>{links}</nav>

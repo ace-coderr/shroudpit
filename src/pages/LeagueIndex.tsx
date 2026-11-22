@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { STATUS_LABEL } from '../lib/config'
-import { short, useLeagues } from '../lib/hooks'
+import { useLeagues } from '../lib/hooks'
+import Addr from '../components/Addr'
 import Skeleton from '../components/Skeleton'
 
 /** The Desk and Standings tabs need a league: this lists every league so one can be picked. */
@@ -26,7 +27,7 @@ export default function LeagueIndex({ target }: { target: 'desk' | 'standings' }
           <li key={l.key.toBase58()} className="card enter" style={{ ['--i' as string]: i }}>
             <div className="card__head">
               <span className={`tag${l.status === 2 ? ' tag--live' : ''}`}>{STATUS_LABEL[l.status]}</span>
-              <span className="mono small">{short(l.key.toBase58(), 5, 5)}</span>
+              <Addr value={l.key.toBase58()} />
             </div>
             <Link className="btn btn--ink" to={`/${target}/${l.key.toBase58()}`}>
               {target === 'desk' ? 'Open desk' : 'Open standings'}

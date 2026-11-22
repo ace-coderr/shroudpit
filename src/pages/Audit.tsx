@@ -1,11 +1,14 @@
-import { useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { PublicKey } from '@solana/web3.js'
 import { finishLeague, helperConnection, helperKeypair, revealEntries } from '../lib/actions'
 import { baseConnection, fetchCards, fetchEntries, fetchSecretBase, secretPda } from '../lib/chain'
 import type { EntryView, LeagueView, SecretView } from '../lib/chain'
 import { CLOSE_MODE_LABEL, STATUS_LABEL, explorerAddress, explorerTx } from '../lib/config'
+import { fmtUtc, leagueName, rankCards } from '../lib/format'
 import { hex, short, useLeague, usePoll } from '../lib/hooks'
+import { labelTransactions } from '../lib/settlement'
+import Addr from '../components/Addr'
 import CopyField from '../components/CopyField'
 import DeskShell from '../components/DeskShell'
 import SealStamp from '../components/SealStamp'
@@ -72,6 +75,21 @@ export default function Audit() {
   const entries = usePoll(() => (key && finished ? fetchEntries(key) : Promise.resolve([])), 15_000, [key?.toBase58(), finished])
   const secret = usePoll(() => (key && finished ? fetchSecretBase(key) : Promise.resolve(null)), 15_000, [key?.toBase58(), finished])
   const sigs = usePoll(async () => (key ? baseConnection.getSignaturesForAddress(key, { limit: 25 }) : []), 20_000, [key?.toBase58()])
+  const [params] = useSearchParams()
+  const focus = params.get('wallet')
+  const labelled = usePoll(
+    async () => {
+      if (!sigs.data) return []
+      const sortedForVoid = [...(entries.data ?? [])]
+      const voidedRounds: number[] = []
+      if (league && sortedForVoid.length > 0) {
+        for (let r = 0; r < league.round; r++) if (sortedForVoid.every((e) => !e.history[r]?.scored)) voidedRounds.push(r + 1)
+      }
+      return labelTransactions(sigs.data, { finished: !!finished, voidedRounds })
+    },
+    20_000,
+    [sigs.data?.[0]?.signature, sigs.data?.length, finished, entries.data?.length, league?.round],
+  )
   const check = usePoll(
     async () => {
       if (!league || !secret.data || !entries.data?.length) return null
@@ -101,10 +119,16 @@ export default function Audit() {
     }
   }
 
+  // arriving from a Standings row: bring that wallet's rating row into view
+  const cardCount = cards.data?.length ?? 0
+  useEffect(() => {
+    if (focus && cardCount > 0) document.getElementById(`wallet-${focus}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [focus, cardCount])
+
   if (!key) return <section className="page"><p className="notice notice--bad">That league address is not valid.</p></section>
   if (leagueError) return <section className="page"><p className="notice notice--bad">{leagueError}</p></section>
   const revealed = finished && !!secret.data && secret.data.history[0].closeAt > 0
-  const ranked = [...(cards.data ?? [])].sort((a, b) => b.rating - a.rating)
+  const ranked = rankCards(cards.data ?? [], finished && league ? league.winner.toBase58() : undefined)
   const sortedEntries = [...(entries.data ?? [])].sort(keyOrder)
   const totalChunks = league ? Math.max(1, Math.ceil(league.playerCount / CHUNK)) : 1
   const doneChunks = league ? Math.min(totalChunks, Math.floor(league.revealedCount / CHUNK) + (league.revealedCount >= league.playerCount && league.playerCount % CHUNK ? 1 : 0)) : 0
@@ -115,12 +139,14 @@ export default function Audit() {
       <section className="page">
         <header className="page__head">
           <span className="caption">Reveal and audit</span>
-          <h1>{league ? STATUS_LABEL[league.status] : 'Ledger'}</h1>
+          <h1>{finished ? 'Final scores' : key ? leagueName(key.toBase58()) : 'Ledger'}</h1>
           <p className="page__lede">
             Scores are public after every round. Positions, nonces and close times stay sealed until the final round settles, then all of it is
             published here with the transactions that prove it. Everything on this page is read from Solana devnet.
           </p>
           <div className="row">
+            {league && <span className="tag">{STATUS_LABEL[league.status]}</span>}
+            <Addr value={key.toBase58()} />
             {revealed && <SealStamp label="Revealed" />}
             <a className="btn btn--small" href={explorerAddress(key.toBase58())} target="_blank" rel="noreferrer">League on Explorer</a>
             <Link className="btn btn--small btn--ghost" to={`/standings/${key.toBase58()}`}>Standings</Link>
@@ -155,7 +181,7 @@ export default function Audit() {
         )}
 
         <div className="card" style={{ marginBottom: '1.25rem' }}>
-          <div className="card__head"><h3>Scores so far</h3><StatusBadge kind="revealed" label="Public each round" /></div>
+          <div className="card__head"><h3>{finished ? 'Final scores' : 'Scores so far'}</h3><StatusBadge kind="revealed" label="Public each round" /></div>
           {cards.loading && <Skeleton count={1} height="5rem" />}
           {!cards.loading && ranked.every((c) => c.roundsScored === 0) && <p className="empty">No round has settled yet.</p>}
           {ranked.some((c) => c.roundsScored > 0) && (
@@ -163,8 +189,8 @@ export default function Audit() {
               <thead><tr><th>Wallet</th><th>Rounds</th><th>Last return</th><th>Rating</th></tr></thead>
               <tbody>
                 {ranked.filter((c) => c.roundsScored > 0).map((c) => (
-                  <tr key={c.key.toBase58()}>
-                    <td data-label="Wallet" className="mono">{short(c.player.toBase58(), 5, 5)}</td>
+                  <tr key={c.key.toBase58()} id={`wallet-${c.player.toBase58()}`} className={focus === c.player.toBase58() ? 'is-focus' : undefined}>
+                    <td data-label="Wallet"><Addr value={c.player.toBase58()} to={`/record/${c.player.toBase58()}`} /></td>
                     <td data-label="Rounds" className="mono">{c.roundsScored}</td>
                     <td data-label="Last return" className="mono">{(c.lastRetBps / 100).toFixed(2)}%</td>
                     <td data-label="Rating" className="mono">{c.rating}</td>
@@ -174,7 +200,7 @@ export default function Audit() {
             </table>
           )}
           {league && league.settlePrice > 0 && (
-            <p className="muted small" style={{ marginTop: '0.6rem' }}>Latest settlement price ${(league.settlePrice / 1e8).toFixed(4)}, published at {league.settleTime}.</p>
+            <p className="muted small" style={{ marginTop: '0.6rem' }}>Latest settlement price ${(league.settlePrice / 1e8).toFixed(4)}, published {fmtUtc(league.settleTime)}.</p>
           )}
         </div>
 
@@ -226,8 +252,8 @@ export default function Audit() {
                   <CopyField label="Recomputed base seed" value={ok?.recomputed ?? '…'} />
                   <dl className="facts">
                     <div><dt>Slot at lock-in</dt><dd className="mono">{rs.lockSlot}</dd></div>
-                    <div><dt>Close time (unix)</dt><dd className="mono">{rs.closeAt}</dd></div>
-                    <div><dt>Recomputed close</dt><dd className="mono">{ok?.closeAt ?? '…'}</dd></div>
+                    <div><dt>Close time</dt><dd className="mono" title={`unix ${rs.closeAt}`}>{fmtUtc(rs.closeAt)}</dd></div>
+                    <div><dt>Recomputed close</dt><dd className="mono" title={ok ? `unix ${ok.closeAt}` : undefined}>{ok ? fmtUtc(Number(ok.closeAt)) : '…'}</dd></div>
                   </dl>
                 </div>
               </div>
@@ -237,8 +263,8 @@ export default function Audit() {
                   {sortedEntries.map((e) => {
                     const h = e.history[r]
                     return (
-                      <tr key={e.key.toBase58()}>
-                        <td data-label="Wallet" className="mono">{short(e.player.toBase58(), 5, 5)}</td>
+                      <tr key={e.key.toBase58()} className={focus === e.player.toBase58() ? 'is-focus' : undefined}>
+                        <td data-label="Wallet"><Addr value={e.player.toBase58()} to={`/record/${e.player.toBase58()}`} /></td>
                         <td data-label="Position" className="mono">{h.side === 0 ? 'Flat' : `${h.side > 0 ? 'Long' : 'Short'} ×${h.leverage} @ $${(h.entryPrice / 1e8).toFixed(4)}`}</td>
                         <td data-label="Return" className="mono">{h.scored ? `${(h.retBps / 100).toFixed(2)}%` : '-'}</td>
                         <td data-label="Nonce" className="mono small">{h.committed ? `${hex(h.nonce).slice(0, 12)}…` : 'none'}</td>
@@ -257,12 +283,17 @@ export default function Audit() {
           <p className="muted small" style={{ marginBottom: '0.6rem' }}>
             Commits from the Private ER land on devnet. <a href={explorerAddress(secretPda(key).toBase58())} target="_blank" rel="noreferrer">Secret account</a>
           </p>
-          {sigs.loading && <Skeleton count={1} height="4rem" />}
+          {(sigs.loading || labelled.loading) && <Skeleton count={1} height="4rem" />}
           <ul className="siglist">
-            {(sigs.data ?? []).map((s) => (
-              <li key={s.signature}>
-                <a className="mono small" href={explorerTx(s.signature)} target="_blank" rel="noreferrer">{short(s.signature, 10, 8)}</a>
-                <span className="muted small"> slot {s.slot}{s.err ? ' · failed' : ''}</span>
+            {(labelled.data ?? []).map((t) => (
+              <li key={t.signature}>
+                <strong>{t.label}</strong>
+                {t.note && <span className="tag" style={{ marginLeft: '0.4rem' }}>{t.note}</span>}
+                {t.failed && <span className="tag tag--warn" style={{ marginLeft: '0.4rem' }}>failed</span>}
+                <div className="small">
+                  <span className="muted">{t.time ? fmtUtc(t.time) : 'time not available'} · </span>
+                  <a className="mono" href={explorerTx(t.signature)} target="_blank" rel="noreferrer">{short(t.signature, 10, 8)}</a>
+                </div>
               </li>
             ))}
             {sigs.data?.length === 0 && <li className="empty">No transactions yet.</li>}

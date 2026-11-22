@@ -4,8 +4,9 @@ import { joinLeague } from '../lib/actions'
 import { baseConnection, entryPda, priceFeedPda } from '../lib/chain'
 import type { LeagueView } from '../lib/chain'
 import { ASSETS, CLOSE_MODE_LABEL, STATUS_LABEL, explorerAddress } from '../lib/config'
-import { short, useLeagues, usePoll } from '../lib/hooks'
+import { useLeagues, usePoll } from '../lib/hooks'
 import { useSigner } from '../lib/wallet'
+import Addr from '../components/Addr'
 import Shroud from '../components/Shroud'
 import Skeleton from '../components/Skeleton'
 
@@ -95,7 +96,7 @@ export default function Lobby() {
             <li key={key} className="card leaguecard enter" style={{ ['--i' as string]: i }}>
               <div className="card__head">
                 <span className={`tag${l.status === 2 ? ' tag--live' : ''}${l.status === 5 || l.status === 1 ? ' tag--warn' : ''}`}>{STATUS_LABEL[l.status]}</span>
-                <a className="mono small" href={explorerAddress(key)} target="_blank" rel="noreferrer">{short(key, 5, 5)}</a>
+                <Addr value={key} href={explorerAddress(key)} />
               </div>
               <h3>{assetOf(l)}</h3>
               <dl className="facts">

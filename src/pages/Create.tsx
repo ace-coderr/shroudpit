@@ -7,7 +7,9 @@ import {
 import { permissionPda, secretPda } from '../lib/chain'
 import type { LeagueView } from '../lib/chain'
 import { ASSETS, CLOSE_MODE_LABEL, STATUS_LABEL } from '../lib/config'
-import { short, useLeagues, usePoll } from '../lib/hooks'
+import { shortAddr } from '../lib/format'
+import Addr from '../components/Addr'
+import { useLeagues, usePoll } from '../lib/hooks'
 import { teeSession } from '../lib/session'
 import { useSigner } from '../lib/wallet'
 
@@ -34,7 +36,7 @@ export default function Create() {
       const { league } = await createLeague(signer, { rounds, minSecs, maxSecs, maxPlayers, feedId, closeMode })
       // the creator plays too: join straight away so the league has a first player
       await joinLeague(signer, league)
-      setMsg({ ok: true, text: `League ${short(league.toBase58(), 5, 5)} created and joined.` })
+      setMsg({ ok: true, text: `League ${shortAddr(league.toBase58())} created and joined.` })
       await leagues.refresh()
     } catch (err) {
       setMsg({ ok: false, text: err instanceof Error ? err.message : String(err) })
@@ -136,7 +138,7 @@ function ConsoleCard({ league }: { league: LeagueView }) {
     <li className="card">
       <div className="card__head">
         <span className={`tag${league.status === 2 ? " tag--live" : ""}`}>{STATUS_LABEL[league.status]}</span>
-        <span className="mono small">{short(key.toBase58(), 5, 5)}</span>
+        <Addr value={key.toBase58()} />
       </div>
       <h3 className=" ">{league.playerCount}/{league.maxPlayers} players · round {Math.min(league.round + 1, league.nRounds)} of {league.nRounds}</h3>
       <div className="card__actions col">
