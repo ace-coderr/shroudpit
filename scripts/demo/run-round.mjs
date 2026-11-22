@@ -22,7 +22,7 @@ import { join } from 'node:path'
 import { Connection, PublicKey } from '@solana/web3.js'
 import { DELEGATION_PROGRAM_ID } from '@magicblock-labs/ephemeral-rollups-sdk'
 import {
-  BASE_RPC, PROGRAM_ID, TEE_VALIDATOR, cardPda, decode, discoverEntries, entryPda, explorerBase, explorerTee,
+  BASE_RPC, PROGRAM_ID, TEE_VALIDATOR, cardPda, decode, discoverEntries as discoverRaw, entryPda, explorerBase, explorerTee,
   loadKeypair, permissionPda, programFor, send, sleep, teeConnection, withCU,
 } from '../e2e/lib.mjs'
 
@@ -60,6 +60,10 @@ log(`league ${league.toBase58()}  creator ${short(creator.publicKey)}  players $
 log(`creator balance: ${((await base.getBalance(creator.publicKey)) / 1e9).toFixed(4)} SOL (devnet)`)
 
 if (!baseInfo.owner.equals(DELEGATION_PROGRAM_ID)) {
+  if (leagueBase.status === 4) {
+    log(`league is already Finished. Winner ${leagueBase.winner.toBase58()}. Open #/audit/${league.toBase58()} and #/standings/${league.toBase58()}.`)
+    process.exit(0)
+  }
   if (leagueBase.status !== 0) throw new Error(`league is not Open (status ${leagueBase.status}); cannot delegate`)
   if (leagueBase.playerCount < 2) throw new Error('need at least 2 players before closing joining')
   const sig = await send(base, await baseProg.methods
@@ -109,6 +113,23 @@ async function countdown(label) {
   process.stdout.write('\r' + ' '.repeat(40) + '\r')
 }
 
+// The public devnet RPC rate-limits getProgramAccounts. Players cannot change after joining closes,
+// so look them up once and back off on 429s instead of failing.
+let entriesCache = null
+async function discoverEntries(b, p, lg) {
+  if (entriesCache) return entriesCache
+  for (let i = 0; ; i++) {
+    try {
+      entriesCache = await discoverRaw(b, p, lg)
+      return entriesCache
+    } catch (e) {
+      if (i >= 8 || !/429|Too many/i.test(String(e.message))) throw e
+      log(`   devnet is rate-limiting the player lookup; waiting 8 s (try ${i + 1}/8)`)
+      await sleep(8000)
+    }
+  }
+}
+
 const positionTx = async (l) =>
   prog.methods
     .setPosition(SIDE, LEVERAGE)
@@ -147,6 +168,7 @@ let closeSeenAt = 0
 let probeBroken = 0
 let finishingSince = 0
 let watchedLive = false
+let described = false
 log('\nreading the league state; every action below depends on it')
 while (Date.now() - started < GIVE_UP_MS) {
   let l
@@ -280,7 +302,7 @@ while (Date.now() - started < GIVE_UP_MS) {
     // Round settled or voided
     if ((l.status === 3 && watchedLive) || l.status === 6 || l.status === 4) {
       liveSince = 0
-      await describeResult()
+      if (!described) { described = true; await describeResult() }
       if (l.status === 6) {
         // final round: reveal the entries and finish if no Desk does within the grace period
         finishingSince ||= now()
