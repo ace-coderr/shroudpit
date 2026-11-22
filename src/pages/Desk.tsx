@@ -202,7 +202,7 @@ export default function Desk() {
           <h1 className="mono h1--addr">{shortAddr(league.key.toBase58())}</h1>
           <div className="row">
             <Addr value={league.key.toBase58()} />
-            <span className={`tag${live ? ' tag--live' : ''}`}>{STATUS_LABEL[league.status]}</span>
+            {!over && <span className={`tag${live ? ' tag--live' : ''}`}>{STATUS_LABEL[league.status]}</span>}
             <span className="tag">round {Math.min(league.round + 1, league.nRounds)} of {league.nRounds}</span>
             {over && <SealStamp voided={lastVoided} label={lastVoided ? 'Voided' : league.status === 4 ? 'Finished' : league.status === 6 ? 'Revealing' : 'Settled'} />}
           </div>

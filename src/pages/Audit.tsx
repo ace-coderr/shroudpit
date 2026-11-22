@@ -10,6 +10,7 @@ import { hex, short, useLeague, usePoll } from '../lib/hooks'
 import { labelTransactions } from '../lib/settlement'
 import Addr from '../components/Addr'
 import LoadFailed from '../components/LoadFailed'
+import Switch from '../components/Switch'
 import CopyField from '../components/CopyField'
 import DeskShell from '../components/DeskShell'
 import SealStamp from '../components/SealStamp'
@@ -295,9 +296,12 @@ export default function Audit() {
         <div className="card">
           <div className="card__head">
             <h3>League transactions</h3>
-            <button type="button" className="btn btn--small btn--ghost" onClick={() => setNewestFirst((v) => !v)}>
-              {newestFirst ? 'Newest first · show oldest first' : 'Oldest first · show newest first'}
-            </button>
+            <Switch
+              label="Order of transactions"
+              value={newestFirst ? 'newest' : 'oldest'}
+              onChange={(v) => setNewestFirst(v === 'newest')}
+              options={[{ value: 'oldest', label: 'Oldest first' }, { value: 'newest', label: 'Newest first' }]}
+            />
           </div>
           <p className="muted small" style={{ marginBottom: '0.6rem' }}>
             Commits from the Private ER land on devnet. Labels are derived from transaction order and program logs, not stored on chain. <a href={explorerAddress(secretPda(key).toBase58())} target="_blank" rel="noreferrer">Secret account</a>

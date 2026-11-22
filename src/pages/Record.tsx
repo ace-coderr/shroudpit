@@ -11,6 +11,7 @@ import { useSigner } from '../lib/wallet'
 import Addr from '../components/Addr'
 import CopyField from '../components/CopyField'
 import LoadFailed from '../components/LoadFailed'
+import Switch from '../components/Switch'
 import Shroud from '../components/Shroud'
 import Skeleton from '../components/Skeleton'
 import StatusBadge from '../components/StatusBadge'
@@ -64,6 +65,7 @@ export default function Record() {
 
   // One read for the page: cards, leagues and trophies in a small fixed burst (see fetchRecord).
   const rec = usePoll(() => (pk ? fetchRecord(pk) : Promise.resolve(null)), 20_000, [pk?.toBase58()])
+  const [finishedOnly, setFinishedOnly] = useState(true)
   const [claimMsg, setClaimMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [claiming, setClaiming] = useState<string | null>(null)
 
@@ -84,6 +86,9 @@ export default function Record() {
 
   const data = rec.data
   const rows = data?.rows ?? []
+  // The filter only changes the table. Nothing is removed, and the stats above keep counting every league.
+  const finishedRows = rows.filter((r) => r.league.status === 4)
+  const shownRows = finishedOnly ? finishedRows : rows
   // never a zero or an empty state while the data is missing: a dash if the load failed, an ellipsis while loading
   const stat = (v: string | number) => (data ? v : rec.failed ? '–' : '…')
   const scored = rows.filter((r) => r.card.roundsScored > 0)
@@ -166,10 +171,25 @@ export default function Record() {
           {data && rows.length === 0 && <p className="empty">No leagues yet. Join one from the <Link to="/">lobby</Link>.</p>}
 
           {rows.length > 0 && (
+            <div className="row" style={{ justifyContent: 'space-between', margin: '0 0 0.75rem' }}>
+              <span className="muted small">{rows.length} league{rows.length === 1 ? '' : 's'}, {finishedRows.length} finished</span>
+              <Switch
+                label="Which leagues to list"
+                value={finishedOnly ? 'finished' : 'all'}
+                onChange={(v) => setFinishedOnly(v === 'finished')}
+                options={[{ value: 'finished', label: 'Finished only' }, { value: 'all', label: 'All leagues' }]}
+              />
+            </div>
+          )}
+          {rows.length > 0 && shownRows.length === 0 && (
+            <p className="empty">No finished leagues yet. Switch to "All leagues" to see the {rows.length} unfinished.</p>
+          )}
+
+          {shownRows.length > 0 && (
             <table className="dtable">
               <thead><tr><th>League</th><th>State</th><th>Rating</th><th>Last return</th><th>Result</th></tr></thead>
               <tbody>
-                {rows.map(({ card, league: l }) => (
+                {shownRows.map(({ card, league: l }) => (
                   <tr key={card.key.toBase58()}>
                     <td data-label="League"><Link to={`/audit/${l!.key.toBase58()}`}>{leagueName(l!.key.toBase58())}</Link></td>
                     <td data-label="State"><span className="tag">{STATUS_LABEL[l!.status]}</span></td>

@@ -42,7 +42,6 @@ export default function ResultCard({
         <h3>{mine ? 'Your result' : 'Final result'}</h3>
         <div className="row">
           {isWinner && <span className="tag tag--live">Winner</span>}
-          <span className="tag">{finished ? 'Finished' : 'Revealing'}</span>
         </div>
       </div>
 
