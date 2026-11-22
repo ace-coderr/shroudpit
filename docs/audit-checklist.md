@@ -89,3 +89,19 @@ Test numbers follow the task: 1 commit after lock-in, 2 double commit, 3 `callba
 **Only read, not tested** (reasoning from the program source, no transaction sent): replaying a nonce from a previous epoch; `callback_close` twice or after `finalize_without_vrf`; wrong owner, zero price and stale publish time on the price feed; running settlement a second time (a no-op once the league is not Live); entries from a different league in a reveal or settlement; `finish_league` or `reveal_entries` after the league has finished (the accounts have left the rollup).
 
 Notes from the run: the transaction in test 7h (the repeated reveal chunk) was rejected by the program with `EntryRevealed`, and `revealed_count` stayed at 1 in test 7i. Tests 4 and 6 only reach their checks once the round has closed (before the close `settle_and_reveal` returns Ok without doing anything), so they were run inside the 60 s window; the oracle price can be a moment older than the close, in which case the script repeats the call until the check being tested is the one that fails.
+
+## Negative tests, second batch (partial: run in progress when recorded)
+
+`scripts/audit/negative.mjs` was extended (second round, a second league as a source of foreign entries and cards, a VRF-mode league, calls after Finished). Only the part below had finished when this was written; the rest of the run (N3c, N3d, N5a to N5d, N6a to N6f) is **not yet recorded and not claimed**.
+
+| Test | What was sent | Expected | Actual | Kind |
+| --- | --- | --- | --- | --- |
+| N1a, N1b | `settle_and_reveal` with a look-alike feed (a program-owned account, a system-owned wallet) | WrongFeed 6006 | WrongFeed 6006 | tested |
+| N1c, N1d | the same two look-alikes in `set_position` | WrongFeed 6006 | WrongFeed 6006 | tested |
+| N3a, N3b | `settle_and_reveal` with another league's entries and cards, and with this league's entries plus another league's cards | BadEntries 6013 | BadEntries 6013 | tested |
+| N2c | `settle` right after the close, to see the price-versus-close check | OutsideSettleWindow 6011 then BadEntries 6013 | only BadEntries 6013 was reached (the price was already newer than the close) | tested, 6011 not observed |
+| **N4** | `commit_nonce` replaying the exact nonce used in the previous round | rejection (the request's expectation) | **ACCEPTED** | tested, **finding** |
+
+**Wrong owner of the price feed (read, unreachable):** `create_league` pins `league.feed = price::feed_address(feed_id)`, a PDA of the oracle program, and `read_quote` compares the account key to it before it looks at the owner, so any look-alike at another address fails with WrongFeed first. The owner check could only be reached if that PDA itself had another owner, which nobody can arrange. **Price 0 and a stale publish time** need the oracle itself to write them, so they are unreachable from outside (read only: `read_quote`, `fresh_quote`).
+
+**N4 finding, for review (no program change made):** `commit_nonce` allows one commit per epoch and a non-zero value; it does not compare against earlier epochs, so a player can reuse the same bytes in a later round. Impact: nonces stay private until the final reveal and each epoch's seed also mixes in the lock-in slot and every other player's nonce, so a replayed nonce only means that player adds no fresh entropy, the same as choosing any constant. It is not exploitable by another player. The README sentence "an epoch counter makes old nonces unusable" should be read as "old nonces are not counted until re-committed". Smallest possible fix if wanted: reject `nonce == entry.nonce` in `commit_nonce`; it adds little, since a player can flip one bit.
