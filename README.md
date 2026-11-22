@@ -159,16 +159,17 @@ The end-to-end scripts take `KEYPAIR_DIR` (a directory of devnet keypairs kept o
 
 ### Running the demo league
 
-`scripts/demo/seed-demo.mjs` leaves one league open so a second wallet can join live. Closing joining and opening round 1 are creator-only actions, so they are scripted:
+`scripts/demo/seed-demo.mjs` leaves one league open so a second wallet can join live. Closing joining and opening each round are creator-only actions, so they are scripted in `scripts/demo/run-round.mjs`, which handles any round:
 
 1. In the browser, a second wallet joins from the Lobby, unlocks its desk and seals its entry.
-2. Run `scripts/demo/run-round1.mjs` as the creator wallet. It closes joining (delegates the league to the Private ER), hides the close time, seals the creator's own entry, counts down 10 s, opens the round, commits the creator's nonce and then shows the 45 s nonce window.
-3. The second wallet presses "Seal my nonce" on the Desk inside that window. Once every player has committed, lock-in is sent by the Desk helper or, if the Desk has not done it within 5 s, by the script. The script prints `LIVE` when positions can be placed.
+2. Run the script as the creator wallet. The first time it closes joining (delegates the league to the Private ER), hides the close time and seals the creator's own entry. Every time it counts down 10 s, opens the round (a 45 s nonce window) and commits the creator's nonce.
+3. The other wallets press "Seal my nonce" on the Desk inside that window. Once every player has committed, lock-in is sent by a Desk helper or, if none has within 5 s, by the script.
+4. When the round is Live the script places the creator's position straight away (it prints how many seconds after LIVE), then watches for the hidden close. If no Desk has settled 20 s after the close, the script settles from here. It prints whether the round was scored or voided and the creator's score card. After the final round it also runs the chunked reveal and `finish_league` if no Desk does.
 
-The script reads the chain before every step, so it can be re-run after a failure and only does what is still missing. If the nonce window ends with fewer than two nonces it opens a new window. It needs only devnet SOL for the creator's fees.
+The script reads the chain before every step, so it can be re-run after a failure and only does what is still missing. If a nonce window ends with fewer than two nonces it opens a new one. `SIDE=long|short|flat` and `LEVERAGE=1..5` choose the creator's position. It needs only devnet SOL for the creator's fees.
 
 ```
-KEYPAIR_DIR=$HOME/.config/solana node scripts/demo/run-round1.mjs
+KEYPAIR_DIR=$HOME/.config/solana node scripts/demo/run-round.mjs
 ```
 
 ## Deployment
