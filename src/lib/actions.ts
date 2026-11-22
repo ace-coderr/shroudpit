@@ -3,8 +3,9 @@ import type { Connection } from '@solana/web3.js'
 import BN from 'bn.js'
 import nacl from 'tweetnacl'
 import {
-  baseConnection, cardPda, entryPda, fetchEntries, permissionPda, programFor, secretPda, sortKeys,
+  baseConnection, cardPda, entryPda, fetchEntries as fetchEntriesRaw, permissionPda, programFor, secretPda, sortKeys,
 } from './chain'
+import type { EntryView } from './chain'
 import { TEE_VALIDATOR } from './config'
 import { sendBase, sendTee, teeSession } from './session'
 import type { Signer } from './session'
@@ -97,6 +98,20 @@ export async function commitNonce(signer: Signer, league: PublicKey) {
     .accountsPartial({ player: signer.publicKey, league, entry, permission: permissionPda(entry) })
     .transaction()
   return sendTee(connection, signer, tx)
+}
+
+/**
+ * A league's players are fixed once joining closes, and every lock-in, settle and reveal step needs
+ * them. The lookup is a getProgramAccounts call, which public devnet rate-limits hard, so a helper
+ * polling every second must not repeat it: remember the first complete answer.
+ */
+const entriesCache = new Map<string, EntryView[]>()
+async function fetchEntries(league: PublicKey): Promise<EntryView[]> {
+  const hit = entriesCache.get(league.toBase58())
+  if (hit) return hit
+  const rows = await fetchEntriesRaw(league)
+  if (rows.length >= 2) entriesCache.set(league.toBase58(), rows)
+  return rows
 }
 
 async function remainingEntries(league: PublicKey, writable: boolean) {

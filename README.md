@@ -172,6 +172,12 @@ The script reads the chain before every step, so it can be re-run after a failur
 KEYPAIR_DIR=$HOME/.config/solana node scripts/demo/run-round.mjs
 ```
 
+### RPC and rate limits
+
+The public devnet RPC rate-limits `getProgramAccounts` (HTTP 429), which the site uses to discover leagues and entries with no backend. Every read and send goes through a fetch that backs off exponentially (about 0.4 s, 0.8 s, 1.6 s, 3.2 s, 6.4 s, then 10 s, eight attempts in all, with jitter) on 429 and 5xx. To add more endpoints, set the optional build-time variable `VITE_RPC_FALLBACK` to a comma-separated list of devnet RPC URLs (see `.env.example`). They are tried in rotation between retries. No endpoint with a key is ever committed: set it in your shell or an untracked `.env.local`. For the GitHub Pages build, set a repository variable named `VITE_RPC_FALLBACK` (the workflow passes it to the build). A build-time variable is baked into the public bundle, so only use endpoints that are meant to be public and need no key.
+
+The helper that locks in, settles and reveals from an open desk looks a league's players up once and reuses them, so polling every second does not repeat that call.
+
 ## Deployment
 
 The site is a static build served from GitHub Pages. Every push to `main` runs `.github/workflows/deploy.yml`, which installs, lints, builds and publishes `dist/`. There is no backend: leagues and entries are discovered with `getProgramAccounts` filters (delegated accounts keep their data on the base layer under the delegation program), and live state is read straight from the rollup.

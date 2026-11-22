@@ -26,6 +26,9 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run build
+        env:
+          # optional repository variable: comma-separated extra devnet RPC URLs (public, keyless)
+          VITE_RPC_FALLBACK: ${{ vars.VITE_RPC_FALLBACK }}
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:

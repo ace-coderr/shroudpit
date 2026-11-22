@@ -6,11 +6,20 @@ import type { Transaction } from '@solana/web3.js'
 import bs58 from 'bs58'
 import idlJson from './idl.json'
 import { BASE_RPC, PROGRAM_ID, TEE_RPC } from './config'
+import { FALLBACK_RPCS, resilientFetch } from './rpc'
 
 export const idl = idlJson as unknown as Idl
-export const baseConnection = new Connection(BASE_RPC, 'confirmed')
+export const baseConnection = new Connection(BASE_RPC, {
+  commitment: 'confirmed',
+  fetch: resilientFetch(BASE_RPC, FALLBACK_RPCS),
+  disableRetryOnRateLimit: true, // resilientFetch does the backing off and rotates endpoints
+})
 /** Unauthenticated connection: enough for publicly readable accounts (league, price feed). */
-export const teePublicConnection = new Connection(TEE_RPC, 'confirmed')
+export const teePublicConnection = new Connection(TEE_RPC, {
+  commitment: 'confirmed',
+  fetch: resilientFetch(TEE_RPC),
+  disableRetryOnRateLimit: true,
+})
 const coder = new BorshAccountsCoder(idl)
 
 export { permissionPdaFromAccount as permissionPda }
