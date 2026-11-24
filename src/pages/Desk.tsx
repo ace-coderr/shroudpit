@@ -12,7 +12,7 @@ import { STATUS_LABEL } from '../lib/config'
 import { fmtUtc, rankCards, shortAddr } from '../lib/format'
 import { useLeague, useNow, usePoll } from '../lib/hooks'
 import { explain } from '../lib/errors'
-import { teeSession } from '../lib/session'
+import { forgetTeeSession, teeSession, withTimeout } from '../lib/session'
 import { useSigner } from '../lib/wallet'
 import Addr from '../components/Addr'
 import LoadFailed from '../components/LoadFailed'
@@ -51,6 +51,7 @@ export default function Desk() {
   const [showMine, setShowMine] = useState(false)
   const [help, setHelp] = useState(true)
   const [helpNote, setHelpNote] = useState<string | null>(null)
+  const [helperStalled, setHelperStalled] = useState(false)
   const lastRun = useRef<{ name: string; fn: () => Promise<string> } | null>(null)
 
   // joined? (entry PDA exists on the base layer)
@@ -72,10 +73,19 @@ export default function Desk() {
   const mine = usePoll(
     async () => {
       if (!unlocked || !signer || !key || !league?.delegated) return null
-      const { connection } = await teeSession(signer)
-      const ek = entryPda(key, signer.publicKey)
-      const [e, p] = await Promise.all([connection.getAccountInfo(ek), connection.getAccountInfo(permissionPda(ek))])
-      return { entry: e ? toEntry(ek, e.data) : null, sealed: !!p }
+      try {
+        const { connection } = await withTimeout(teeSession(signer), 25_000, 'Private ER login')
+        const ek = entryPda(key, signer.publicKey)
+        const [e, p] = await withTimeout(
+          Promise.all([connection.getAccountInfo(ek), connection.getAccountInfo(permissionPda(ek))]),
+          8000,
+          'Private ER read',
+        )
+        return { entry: e ? toEntry(ek, e.data) : null, sealed: !!p }
+      } catch (err) {
+        forgetTeeSession(signer.publicKey) // log in again on the next poll
+        throw err
+      }
     },
     2000,
     [unlocked, signer?.publicKey.toBase58(), league?.delegated],
@@ -153,16 +163,25 @@ export default function Desk() {
           (l.status === 2 && t >= l.roundStartedAt + l.minSecs) ||
           l.status === 6
         if (!need) return
-        const conn = await helperConnection()
         const kp = helperKeypair()
-        if (l.status === 5) await lockIn(kp, conn, key)
-        else if (l.status === 1) await finalizeWithoutVrf(kp, conn, key)
-        else if (l.status === 6) {
-          if (l.revealedCount < l.playerCount) await revealEntries(kp, conn, key, l.revealedCount)
-          else await finishLeague(kp, conn, key)
-        } else await settle(kp, conn, key, l.feed)
+        const cur = l
+        const step = async () => {
+          const conn = await helperConnection()
+          if (cur.status === 5) await lockIn(kp, conn, key)
+          else if (cur.status === 1) await finalizeWithoutVrf(kp, conn, key)
+          else if (cur.status === 6) {
+            if (cur.revealedCount < cur.playerCount) await revealEntries(kp, conn, key, cur.revealedCount)
+            else await finishLeague(kp, conn, key)
+          } else await settle(kp, conn, key, cur.feed)
+        }
+        await withTimeout(step(), 30_000, 'Helper step')
         setHelpNote(null)
+        setHelperStalled(false)
       } catch (e) {
+        if (/timed out/i.test(String((e as Error)?.message))) {
+          forgetTeeSession(helperKeypair().publicKey) // log in again on the next tick
+          setHelperStalled(true)
+        }
         const x = explain(e)
         setHelpNote(`Automatic helper: ${x.text}${x.retry ? ' It will try again by itself.' : ''}`)
       } finally {
@@ -209,6 +228,15 @@ export default function Desk() {
         </header>
 
         {error && <LoadFailed error={error} busy={leagueBusy} onRetry={() => void refreshLeague()} stale />}
+        {((unlocked && mine.error) || helperStalled || (error && !!league)) && (
+          <div className="banner banner--hot" role="status" aria-live="polite">
+            <strong>Reconnecting…</strong>
+            <span className="small">
+              A read from the Private ER or devnet stalled, so this page is logging in again. Nothing is lost: your entry, nonce and position are
+              stored on chain. It keeps trying by itself.
+            </span>
+          </div>
+        )}
         <SettleBanner league={league} helperOn={help} />
 
         <div className="desk">

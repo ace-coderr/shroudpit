@@ -48,6 +48,16 @@ export async function teeSession(signer: Signer): Promise<TeeSession> {
   return session
 }
 
+/** Forget a cached Private ER session so the next call logs in again (used when a call stalls). */
+export function forgetTeeSession(publicKey: PublicKey) {
+  sessions.delete(publicKey.toBase58())
+}
+
+/** Reject if `p` does not settle in time. The slow call keeps running; nothing waits for it. */
+export function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+  return Promise.race([p, new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`${what} timed out`)), ms))])
+}
+
 export class TxError extends Error {
   code: string | null
   signature: string | null
