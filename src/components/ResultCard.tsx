@@ -35,6 +35,10 @@ export default function ResultCard({
   const isWinner = !!shown && shown.player.toBase58() === winner
   const settled = Math.min(league.round, league.nRounds)
   const lastScored = lastRoundScored(league)
+  // Right after the league finishes, an entry's final history may not have landed on devnet yet and the
+  // entry still looks empty (every round "not scored"). Show the per-round list only once every entry
+  // has been committed back; until then say so instead of calling real rounds voided.
+  const entriesFinal = entries.length > 0 && entries.every((e) => e.onBase === true)
 
   return (
     <div className="card result">
@@ -69,7 +73,7 @@ export default function ResultCard({
           {!mine && <p className="muted small">Connect the wallet that played to see its own result.</p>}
 
           <h4 className="result__sub">Return per round{mine ? '' : ' (winner)'}</h4>
-          {finished && shownEntry ? (
+          {finished && shownEntry && entriesFinal ? (
             <ul className="result__rounds">
               {Array.from({ length: settled }, (_, r) => {
                 const h = shownEntry.history[r]

@@ -113,6 +113,11 @@ export interface EntryView {
   retBps: number
   /** Revealed on the base layer only after the final round. */
   history: RoundPosView[]
+  /**
+   * Set for entries read from devnet: true once the entry is owned by the program again (the reveal
+   * commit has landed), false while it is still delegated and its base copy is not final.
+   */
+  onBase?: boolean
 }
 
 /** Public score card, committed after every round. Holds scores only. */
@@ -175,7 +180,7 @@ export function toLeague(key: PublicKey, data: Uint8Array, delegated: boolean): 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const pick = (o: Raw, snake: string, camel: string) => o[snake] ?? o[camel]
 
-export function toEntry(key: PublicKey, data: Uint8Array): EntryView {
+export function toEntry(key: PublicKey, data: Uint8Array, onBase?: boolean): EntryView {
   const e: Raw = coder.decode('Entry', Buffer.from(data))
   return {
     key,
@@ -188,6 +193,7 @@ export function toEntry(key: PublicKey, data: Uint8Array): EntryView {
     leverage: e.leverage,
     entryPrice: n(pick(e, 'entry_price', 'entryPrice')),
     retBps: n(pick(e, 'ret_bps', 'retBps')),
+    onBase,
     history: (e.history as Raw[]).map((h) => ({
       nonce: Uint8Array.from(h.nonce),
       committed: h.committed,
@@ -388,7 +394,7 @@ export async function fetchEntries(league: PublicKey, expected?: number): Promis
   if (!players) players = (await discoverCards(league, expected)).map((c) => c.player)
   const keys = players.map((p) => entryPda(league, p))
   const infos = await readMany(baseConnection, keys)
-  return infos.flatMap((ai, i) => (isCurrent(ai, 'Entry') ? [toEntry(keys[i], ai.data)] : []))
+  return infos.flatMap((ai, i) => (isCurrent(ai, 'Entry') ? [toEntry(keys[i], ai.data, ai.owner.equals(PROGRAM_ID))] : []))
 }
 
 /** Score cards of a league: one lookup the first time, plain batched reads after that. */
