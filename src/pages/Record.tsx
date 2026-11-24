@@ -86,13 +86,13 @@ export default function Record() {
 
   const data = rec.data
   const rows = data?.rows ?? []
-  // The filter only changes the table. Nothing is removed, and the stats above keep counting every league.
+  // The headline stats count finished leagues only. The switch only changes the table; nothing is removed.
   const finishedRows = rows.filter((r) => r.league.status === 4)
   const shownRows = finishedOnly ? finishedRows : rows
   // never a zero or an empty state while the data is missing: a dash if the load failed, an ellipsis while loading
   const stat = (v: string | number) => (data ? v : rec.failed ? '–' : '…')
-  const scored = rows.filter((r) => r.card.roundsScored > 0)
-  const wins = rows.filter((r) => r.league!.status === 4 && pk && r.league!.winner.equals(pk)).length
+  const scored = finishedRows.filter((r) => r.card.roundsScored > 0)
+  const wins = finishedRows.filter((r) => pk && r.league.winner.equals(pk)).length
   const totalRounds = scored.reduce((n, r) => n + r.card.roundsScored, 0)
   const best = scored.length ? Math.max(...scored.map((r) => r.card.rating)) : null
   const shareUrl = pk ? `${window.location.origin}${window.location.pathname}#/record/${pk.toBase58()}` : ''
@@ -115,11 +115,14 @@ export default function Record() {
         <>
           <div className="card" style={{ marginBottom: '1.25rem' }}>
             <dl className="facts facts--big">
-              <div><dt>Leagues played</dt><dd>{stat(rows.length)}</dd></div>
+              <div><dt>Finished leagues</dt><dd>{stat(finishedRows.length)}</dd></div>
               <div><dt>Rounds scored</dt><dd>{stat(totalRounds)}</dd></div>
               <div><dt>Leagues won</dt><dd>{stat(wins)}</dd></div>
               <div><dt>Best rating</dt><dd>{stat(best ?? '-')}</dd></div>
             </dl>
+            <p className="muted small" style={{ marginTop: '0.6rem' }}>
+              {data ? `${finishedRows.length} finished league${finishedRows.length === 1 ? '' : 's'}. ` : ''}These figures count finished leagues only.
+            </p>
             <div style={{ marginTop: '1rem' }}>
               <CopyField label="Shareable link" value={shareUrl} />
             </div>
