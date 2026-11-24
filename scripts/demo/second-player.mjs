@@ -69,22 +69,32 @@ if (await retry('read entry', () => base.getAccountInfo(entry))) {
 }
 
 // ---------------------------------------------------------------- 2. Private ER login, seal the entry
-say('logging in to the Private ER (the attestation check can take up to a minute)...')
-const tee = await retry('Private ER login', () => teeConnection(me), 6)
-const prog = programFor(idl, tee, me)
+// Every Private ER call has a time limit. A call that never answers, or an expired session, makes the
+// script log in again instead of waiting silently (a long-lived session once froze this script).
+const withTimeout = (p, ms, what) =>
+  Promise.race([p, new Promise((_, reject) => setTimeout(() => reject(new Error(`${what} timed out`)), ms))])
+let tee
+let prog
+async function connect() {
+  say('logging in to the Private ER (the attestation check can take up to a minute)...')
+  tee = await retry('Private ER login', () => teeConnection(me), 6)
+  prog = programFor(idl, tee, me)
+}
+await connect()
+const sendTee = (tx) => withTimeout(send(tee, tx, [me], { skipPreflight: true }), 30_000, 'send')
 const readLeague = async () => {
-  const ai = await tee.getAccountInfo(league)
+  const ai = await withTimeout(tee.getAccountInfo(league), 6000, 'league read')
   return ai ? decode(prog, 'league', ai.data) : null
 }
 const readEntry = async () => {
-  const ai = await tee.getAccountInfo(entry)
+  const ai = await withTimeout(tee.getAccountInfo(entry), 6000, 'entry read')
   return ai ? decode(prog, 'entry', ai.data) : null
 }
 if (await tee.getAccountInfo(permissionPda(entry)).catch(() => null)) {
   say('seal entry: already sealed, skipping')
 } else {
   const sig = await retry('seal entry', async () =>
-    send(tee, await prog.methods.initEntryPermission().accountsPartial({ payer: me.publicKey, entry, permission: permissionPda(entry) }).transaction(), [me], { skipPreflight: true }), 12)
+    sendTee(await prog.methods.initEntryPermission().accountsPartial({ payer: me.publicKey, entry, permission: permissionPda(entry) }).transaction()), 12)
   say(`sealed my entry (private to this wallet): ${explorerTee(sig)}`)
 }
 
@@ -99,19 +109,30 @@ const status = (line) => {
 let liveSeenAt = 0
 let positionedRound = -1
 let errors = 0
+let lastBeat = Date.now()
 for (;;) {
   let l
   try {
     l = await readLeague()
     errors = 0
   } catch (e) {
-    if (++errors > 15) throw e
+    errors += 1
+    say(`(league read failed: ${String(e.message).slice(0, 70)}; try ${errors})`)
+    if (errors >= 3) {
+      await connect() // a stalled or expired session: log in again
+      errors = 0
+    }
     await sleep(1000)
     continue
   }
   if (!l) {
-    await sleep(1000)
+    say('(the league is not readable yet; will look again)')
+    await sleep(1500)
     continue
+  }
+  if (Date.now() - lastBeat > 20_000) {
+    say(`still watching: league status ${l.status}, round ${l.round + 1}, nonces ${l.nonceCount}/${l.playerCount}`)
+    lastBeat = Date.now()
   }
 
   try {
@@ -124,8 +145,8 @@ for (;;) {
       if (e && e.nonceEpoch === l.epoch) {
         status(`nonce already committed for round ${l.round + 1}; waiting for the other players (${l.nonceCount}/${l.playerCount})`)
       } else if (left > 0) {
-        const sig = await send(tee, await prog.methods.commitNonce(Array.from(randomBytes(32)))
-          .accountsPartial({ player: me.publicKey, league, entry, permission: permissionPda(entry) }).transaction(), [me], { skipPreflight: true })
+        const sig = await sendTee(await prog.methods.commitNonce(Array.from(randomBytes(32)))
+          .accountsPartial({ player: me.publicKey, league, entry, permission: permissionPda(entry) }).transaction())
         say(`committed my nonce for round ${l.round + 1} (${left} s were left): ${explorerTee(sig)}`)
         lastLine = ''
       } else {
@@ -144,9 +165,9 @@ for (;;) {
           positionedRound = l.round
           say('position: already placed this round, skipping')
         } else {
-          const sig = await send(tee, await prog.methods.setPosition(SIDE, LEVERAGE)
+          const sig = await sendTee(await prog.methods.setPosition(SIDE, LEVERAGE)
             .accountsPartial({ player: me.publicKey, league, secret: PublicKey.findProgramAddressSync([Buffer.from('secret'), league.toBuffer()], new PublicKey(idl.address))[0], entry, permission: permissionPda(entry), priceFeed: l.feed })
-            .transaction(), [me], { skipPreflight: true })
+            .transaction())
           positionedRound = l.round
           say(`placed my ${SIDE === 1 ? 'long' : SIDE === -1 ? 'short' : 'flat'} position ${((Date.now() - liveSeenAt) / 1000).toFixed(1)} s after LIVE: ${explorerTee(sig)}`)
         }
