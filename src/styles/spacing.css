@@ -1,0 +1,81 @@
+/*
+ * Spacing pass. Everything below uses the --space-* scale from tokens.css. It loads last so that one
+ * place decides how much room cards, banners, headings and button groups get. Buttons carry a 4 px
+ * offset shadow, so a button group needs --btn-gap between its members.
+ */
+
+/* page rhythm */
+.page { padding-top: clamp(var(--space-5), 4vw, var(--space-7)); padding-bottom: var(--space-8); }
+.page__head { gap: var(--space-3); margin-bottom: var(--space-6); }
+.page__lede { margin-top: var(--space-1); }
+.section-title { margin: var(--space-7) 0 var(--space-4); }
+.stack { gap: var(--space-4); }
+.row { gap: var(--space-3) var(--btn-gap); }
+h1, h2, h3, h4 { margin-block: 0 var(--space-2); }
+
+/* cards */
+.card { padding: var(--space-5); }
+.card > * + * { margin-top: var(--space-4); }
+.card__head { margin-bottom: var(--space-4); gap: var(--space-3); }
+.card__head + * { margin-top: 0; }
+.card h3 + * { margin-top: var(--space-3); }
+.card__head h3 + * { margin-top: 0; }
+.card p { margin-block: 0; }
+.card p + p { margin-top: var(--space-3); }
+@media (max-width: 480px) { .card { padding: var(--space-4); } }
+
+/* button groups */
+.card__actions, .leaguecard__actions, .result__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--btn-gap);
+  align-items: center;
+  margin-top: var(--space-5);
+  padding-bottom: var(--space-1);
+}
+.card__actions.col { flex-direction: column; align-items: flex-start; }
+.card__actions.col > .btn { align-self: flex-start; }
+.card__actions > p { margin: 0; }
+.btn + .btn { margin-left: 0; }
+
+/* banners and notices keep clear of what follows them */
+.notice, .banner { margin-block: var(--space-4); padding: var(--space-3) var(--space-4); }
+.notice > p + p { margin-top: var(--space-2); }
+.form { margin-top: var(--space-5); gap: var(--space-4) var(--space-5); }
+.form + .notice, .form + p { margin-top: var(--space-5); }
+.form .btn { margin-top: var(--space-3); }
+.page > .notice:first-of-type { margin-top: 0; }
+
+/* lists and grids */
+.cards { gap: var(--space-5); }
+.leaguecard { gap: var(--space-3); }
+.how { gap: var(--space-4); }
+.how li { gap: var(--space-2); }
+.hero__copy { gap: var(--space-5); }
+.desk, .desk__col { gap: var(--space-5); }
+.steps { gap: var(--space-4); }
+.step { padding: var(--space-4); gap: var(--space-4); }
+.step__body > * + * { margin-top: var(--space-3); }
+.ticket { gap: var(--space-4); padding: var(--space-4); }
+.roster { gap: var(--space-3); }
+.roster li { padding-bottom: var(--space-2); gap: var(--space-3); }
+.ranklist { gap: var(--space-4); }
+.rankrow { padding: var(--space-3) var(--space-4); gap: var(--space-3) var(--space-4); }
+.facts { gap: var(--space-3) var(--space-5); }
+.result__hero { gap: var(--space-4); margin: var(--space-3) 0 var(--space-4); }
+.result__sub { margin: var(--space-4) 0 var(--space-2); }
+.result__rounds { gap: var(--space-2); margin-bottom: var(--space-3); }
+.result__rounds li { padding-bottom: var(--space-2); }
+.trophy { gap: var(--space-4); padding: var(--space-4); }
+.siglist { gap: var(--space-4); }
+.dtable th, .dtable td { padding-block: var(--space-3); }
+.copyfield { margin-top: var(--space-1); }
+.footer__inner { padding-block: var(--space-5); gap: var(--space-3) var(--space-5); }
+.rpcbar { padding-block: var(--space-2); }
+
+/* the long "close time derivation" choice gets two columns so its text is not clipped */
+.form__wide { grid-column: span 2; }
+@media (max-width: 720px) { .form__wide { grid-column: auto; } }
+
+/* badges inside the trophy card keep their own width instead of stretching across it */
+.trophy > .stack { justify-items: start; }

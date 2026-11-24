@@ -81,7 +81,7 @@ export default function Create() {
           Maximum players
           <input type="number" min={2} max={8} value={maxPlayers} onChange={(e) => setMaxPlayers(Number(e.target.value))} />
         </label>
-        <label>
+        <label className="form__wide">
           Close time derivation
           <select value={closeMode} onChange={(e) => setCloseMode(Number(e.target.value))}>
             <option value={0}>{CLOSE_MODE_LABEL[0]}</option>
