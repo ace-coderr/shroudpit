@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import {
   createLeague, joinLeague, openRound, sealSecret, startLeague,
 } from '../lib/actions'
-import { permissionPda, secretPda } from '../lib/chain'
+import { secretPda } from '../lib/chain'
 import type { LeagueView } from '../lib/chain'
 import { ASSETS, CLOSE_MODE_LABEL, STATUS_LABEL } from '../lib/config'
 import { shortAddr } from '../lib/format'
@@ -97,14 +97,14 @@ export default function Create() {
       <h2 className="section-title">Your leagues</h2>
       {mine.length === 0 && <p className="empty">Leagues you create will be managed here.</p>}
       <ul className="cards">
-        {mine.map((l) => <ConsoleCard key={l.key.toBase58()} league={l} />)}
+        {mine.map((l) => <ConsoleCard key={l.key.toBase58()} league={l} onChanged={() => leagues.refresh()} />)}
       </ul>
     </section>
   )
 }
 
 /** The creator's controls follow the league's phase; only valid next steps are enabled. */
-function ConsoleCard({ league }: { league: LeagueView }) {
+function ConsoleCard({ league, onChanged }: { league: LeagueView; onChanged: () => Promise<void> | void }) {
   const signer = useSigner()
   const key = league.key
   const [busy, setBusy] = useState<string | null>(null)
@@ -113,15 +113,20 @@ function ConsoleCard({ league }: { league: LeagueView }) {
   // The program lets the creator reopen a nonce phase only when it has ended with fewer than two nonces.
   const windowExpired = league.status === 5 && league.nonceCount < 2 && now >= league.nonceDeadline
 
+  // Is the close time hidden? The secret's permission has no members, so nobody can read it, and the
+  // secret itself is readable only until it is sealed. So, with the creator's Private ER session:
+  // secret returned = not sealed, secret not returned = sealed. A read that fails (or a league the
+  // session cannot read either) is "unknown", never a guess: the poll throws and keeps no answer.
   const sealed = usePoll(
     async () => {
-      if (!signer || league.status === 0) return false
+      if (!signer || !league.delegated) return false
       const { connection } = await teeSession(signer)
-      const ai = await connection.getAccountInfo(permissionPda(secretPda(key)))
-      return !!ai
+      const [leagueInfo, secretInfo] = await Promise.all([connection.getAccountInfo(key), connection.getAccountInfo(secretPda(key))])
+      if (!leagueInfo) throw new Error('the league is not readable yet')
+      return secretInfo === null
     },
     6000,
-    [signer?.publicKey.toBase58(), league.status],
+    [signer?.publicKey.toBase58(), league.delegated, league.status],
   )
 
   async function run(name: string, fn: () => Promise<string>) {
@@ -130,6 +135,13 @@ function ConsoleCard({ league }: { league: LeagueView }) {
     try {
       await fn()
       setMsg(`${name}: done`)
+      // update the card now instead of waiting for the next refresh, and once more shortly after
+      void onChanged()
+      void sealed.refresh()
+      setTimeout(() => {
+        void onChanged()
+        void sealed.refresh()
+      }, 2500)
     } catch (e) {
       setMsg(`${name}: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
@@ -149,6 +161,9 @@ function ConsoleCard({ league }: { league: LeagueView }) {
           <button className="btn btn--primary" disabled={!!busy || league.playerCount < 2} onClick={() => void run('Move to the Private ER', () => startLeague(signer, key))}>
             {league.playerCount < 2 ? 'Needs 2 players' : 'Close joining and move to the Private ER'}
           </button>
+        )}
+        {league.delegated && sealed.data === null && (league.status === 0 || league.status === 3) && (
+          <p className="muted small" role="status">Checking…</p>
         )}
         {league.delegated && sealed.data === false && league.status === 0 && (
           <button className="btn btn--primary" disabled={!!busy} onClick={() => void run('Hide the close time', () => sealSecret(signer, key))}>
