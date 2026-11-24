@@ -9,7 +9,7 @@ import type { LeagueView } from '../lib/chain'
 import { ASSETS, CLOSE_MODE_LABEL, STATUS_LABEL } from '../lib/config'
 import { shortAddr } from '../lib/format'
 import Addr from '../components/Addr'
-import { useLeagues, usePoll } from '../lib/hooks'
+import { useLeagues, useNow, usePoll } from '../lib/hooks'
 import { teeSession } from '../lib/session'
 import { useSigner } from '../lib/wallet'
 
@@ -109,6 +109,9 @@ function ConsoleCard({ league }: { league: LeagueView }) {
   const key = league.key
   const [busy, setBusy] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
+  const now = useNow(1000)
+  // The program lets the creator reopen a nonce phase only when it has ended with fewer than two nonces.
+  const windowExpired = league.status === 5 && league.nonceCount < 2 && now >= league.nonceDeadline
 
   const sealed = usePoll(
     async () => {
@@ -156,6 +159,17 @@ function ConsoleCard({ league }: { league: LeagueView }) {
           <button className="btn btn--primary" disabled={!!busy} onClick={() => void run('Open round', () => openRound(signer, key))}>
             Open round {league.round + 1}
           </button>
+        )}
+        {windowExpired && (
+          <>
+            <button className="btn btn--primary" disabled={!!busy} onClick={() => void run('Open round again', () => openRound(signer, key))}>
+              {busy === 'Open round again' ? 'Waiting for signature…' : 'Open round again'}
+            </button>
+            <p className="muted small">
+              The 45-second nonce window ended with fewer than two players sealing a nonce, so the round cannot lock in.
+              This opens a fresh 45 seconds. The list on this page refreshes every 15 seconds, so the button can take a moment to appear.
+            </p>
+          </>
         )}
         <Link className="btn btn--ghost btn--small" to={`/desk/${key.toBase58()}`}>Open the desk</Link>
         {msg && <p className="muted small">{msg}</p>}

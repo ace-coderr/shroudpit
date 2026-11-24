@@ -38,7 +38,7 @@ Times are from the moment of the click that starts them.
 | 10 | Phantom | tab B | when the band shows LIVE: pick Long or Short, leverage, **Place position** | the close lands at a hidden moment **60 to 90 s after lock-in**: do not wait |
 | 11 | script | | places its short about 1 to 3 s after LIVE (prints `placed my short position ... s after LIVE`) | |
 | 12 | (nothing) | tab B | the band tightens; at the close the Desk settles by itself | **60 s settle window** after the close; the open Desk normally settles in about 3 s. The page shows "Round settled" with the settle time |
-| 13 | Phantom | tab A | **Open round 2** | **a new 45 s nonce window**; repeat steps 9 to 12 (the script follows by itself) |
+| 13 | Phantom | tab A | **Open round 2** (or **Open round again** if a nonce window expired) | **a new 45 s nonce window**; repeat steps 9 to 12 (the script follows by itself) |
 | 14 | (nothing) | tab B | after the final settle the Desk shows **Revealing**, then publishes the entries and finishes | 10 to 30 s; Audit shows "chunk n of N" while it runs |
 | 15 | you | `#/audit/<LEAGUE>`, `#/standings/<LEAGUE>` | show Final scores, the recomputed close times and the labelled transactions | |
 | 16 | Phantom | `#/record` | if Phantom won, **Claim trophy** (about 0.0026 SOL) | if `GcMQ` won, use the claim command below instead |
@@ -77,7 +77,7 @@ wsl -d Ubuntu -- bash -lc 'cd "/mnt/c/Users/ACE CODER/Desktop/ace/hackathons/shr
 
 ## What the browser can and cannot do for a creator
 
-Every step has a button except one: **restarting an expired nonce window**. If fewer than two nonces are in when the 45 s end, the program allows the creator to call `start_round` again, but there is no button for it. If that happens while filming, create a new league (or add the button first).
+Every step has a button. If the 45 s nonce window ends with fewer than two nonces in, the creator console on `#/create` shows **Open round again** under that league (it can take up to 15 seconds to appear, because that list refreshes every 15 s). Click it for a fresh 45 s window; the script and the Desk carry on as before. It only appears in that exact state: Nonces phase, fewer than two nonces, window expired.
 
 ## Notes
 
