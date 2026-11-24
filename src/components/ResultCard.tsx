@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import type { PublicKey } from '@solana/web3.js'
 import type { CardView, EntryView, LeagueView } from '../lib/chain'
 import { lastRoundScored, rankCards, scoredVoided } from '../lib/format'
+import { roundOutcomes } from '../lib/roundOutcome'
 import Addr from './Addr'
 import SealStamp from './SealStamp'
 
@@ -73,17 +74,16 @@ export default function ResultCard({
           {!mine && <p className="muted small">Connect the wallet that played to see its own result.</p>}
 
           <h4 className="result__sub">Return per round{mine ? '' : ' (winner)'}</h4>
-          {finished && shownEntry && entriesFinal ? (
+          {finished && shownEntry ? (
             <ul className="result__rounds">
-              {Array.from({ length: settled }, (_, r) => {
-                const h = shownEntry.history[r]
-                return (
-                  <li key={r}>
-                    <span className="mono">Round {r + 1}</span>
-                    {h?.scored ? <span className="mono">{pct(h.retBps)}</span> : <span className="muted">voided, nobody scored</span>}
-                  </li>
-                )
-              })}
+              {roundOutcomes({ settled, cardRoundsScored: shown.roundsScored, history: shownEntry.history, entriesFinal }).map((outcome, r) => (
+                <li key={r}>
+                  <span className="mono">Round {r + 1}</span>
+                  {outcome === 'scored' && <span className="mono">{pct(shownEntry.history[r].retBps)}</span>}
+                  {outcome === 'voided' && <span className="muted">voided, nobody scored</span>}
+                  {outcome === 'pending' && <span className="muted">reading this round…</span>}
+                </li>
+              ))}
             </ul>
           ) : (
             <p className="muted small">

@@ -25,6 +25,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
+      - run: npm test
       - run: npm run build
         env:
           # Optional: comma-separated devnet RPC URLs, tried before the public endpoint. Read from the
